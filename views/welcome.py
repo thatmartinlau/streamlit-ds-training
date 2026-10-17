@@ -2,6 +2,8 @@
 
 import streamlit as st
 
+from core import data
+
 
 def render() -> None:
     st.title("🧠 ML / DS / AI Consulting Interview Prep")
@@ -12,12 +14,13 @@ def render() -> None:
 
         **How it works**
 
-        1. Open the **Quiz** page from the sidebar.
-        2. Upload a CSV in the sidebar, or let the app pick up
-           `questions.csv` sitting next to `app.py`.
-        3. Filter by **themes**, **difficulty** and **verticals**, then press
-           **Start / Restart quiz**.
-        4. For hands-on SQL practice, open **SQL Training** — it has a
+        1. Drop one or more CSV files (matching the schema below) into
+           `quiz_questions/`. Every `*.csv` in that folder is loaded and
+           merged into a single question pool.
+        2. Open the **Quiz** page, optionally upload a CSV in the sidebar to
+           replace the pool for the current session, filter by **themes**,
+           **difficulty** and **verticals**, and press **Start / Restart quiz**.
+        3. For hands-on SQL practice, open **SQL Training** — it has a
            multiple-choice SQL quiz, a **Write SQL** mode where your own
            queries are checked against a reference result set, a playground,
            a cheatsheet, and the schema of the sample warehouse.
@@ -47,16 +50,31 @@ def render() -> None:
 
     st.divider()
     df = st.session_state.get("df")
-    source = st.session_state.get("df_source")
-    error = st.session_state.get("df_error")
+    sources = st.session_state.get("df_sources") or []
+    errors = st.session_state.get("df_errors") or []
+    startup_error = st.session_state.get("df_error")
 
     if df is not None:
         st.success(
-            f"Loaded **{len(df)}** questions from `{source}`. "
+            f"Loaded **{len(df)}** question(s) from **{len(sources)}** "
+            f"file(s) in `{data.QUESTIONS_DIR.name}/`. "
             "Head to the **Quiz** page to begin."
         )
+        with st.expander("Loaded files", expanded=True):
+            for s in sources:
+                st.markdown(f"- `{s['file']}` — {s['rows']} question(s)")
+            if errors:
+                st.markdown("**Skipped files**")
+                for err in errors:
+                    st.markdown(f"- ⚠️ `{err['file']}` — {err['error']}")
     else:
-        msg = "No questions loaded yet. Open the **Quiz** page to upload a CSV."
-        if error:
-            msg += f"\n\n_Startup error: `{error}`_"
+        msg = (
+            f"No questions loaded. Add CSV files to "
+            f"`{data.QUESTIONS_DIR.name}/` or upload one on the **Quiz** page."
+        )
+        if startup_error:
+            msg += f"\n\n_{startup_error}_"
         st.warning(msg)
+        if errors:
+            for err in errors:
+                st.caption(f"⚠️ `{err['file']}` — {err['error']}")

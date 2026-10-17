@@ -16,8 +16,7 @@ OPTIONAL_DEFAULTS = {
 }
 DIFFICULTIES = ["easy", "medium", "hard"]
 
-DEFAULT_CSV_NAME = "questions.csv"
-DEFAULT_CSV_PATH = Path(__file__).resolve().parent.parent / DEFAULT_CSV_NAME
+QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "quiz_questions"
 
 
 # --------------------------------------------------------------------------- #
@@ -83,6 +82,45 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- #
+#  Question-bundle loading
+# --------------------------------------------------------------------------- #
+def load_questions_dir(directory: Path) -> tuple[pd.DataFrame | None, list, list]:
+    """Load and concatenate every `*.csv` in `directory`.
+
+    Returns ``(df, loaded, errors)``:
+
+    * ``loaded`` is ``[{"file": name, "rows": n}, ...]``,
+    * ``errors`` is ``[{"file": name, "error": msg}, ...]`` (skipped files).
+
+    If no file could be loaded, ``df`` is ``None``.
+    """
+    loaded: list = []
+    errors: list = []
+    frames: list[pd.DataFrame] = []
+
+    for path in sorted(directory.glob("*.csv")):
+        try:
+            raw = read_csv_from_path(str(path))
+            prepared = prepare(raw)
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"file": path.name, "error": str(exc)})
+            continue
+
+        if prepared.empty:
+            errors.append({"file": path.name, "error": "No usable rows."})
+            continue
+
+        frames.append(prepared)
+        loaded.append({"file": path.name, "rows": len(prepared)})
+
+    if not frames:
+        return None, loaded, errors
+
+    df = pd.concat(frames, ignore_index=True)
+    return df, loaded, errors
+
+
+# --------------------------------------------------------------------------- #
 #  Filter helpers
 # --------------------------------------------------------------------------- #
 def all_themes(df: pd.DataFrame) -> list:
@@ -126,27 +164,46 @@ def vertical_matches(row: pd.Series, selected: set) -> bool:
 #  Shared-state bootstrap
 # --------------------------------------------------------------------------- #
 def init_session() -> None:
-    """Load the default CSV once per session and store it in session state."""
+    """Load every CSV in `quiz_questions/` once per session."""
     if "df" in st.session_state:
         return
 
-    if DEFAULT_CSV_PATH.exists():
-        try:
-            st.session_state["df"] = prepare(read_csv_from_path(str(DEFAULT_CSV_PATH)))
-            st.session_state["df_source"] = DEFAULT_CSV_NAME
-            st.session_state["df_error"] = None
-        except Exception as exc:  # noqa: BLE001
-            st.session_state["df"] = None
-            st.session_state["df_source"] = None
-            st.session_state["df_error"] = str(exc)
-    else:
+    try:
+        QUESTIONS_DIR.mkdir(exist_ok=True)
+    except OSError as exc:  # noqa: BLE001
         st.session_state["df"] = None
-        st.session_state["df_source"] = None
-        st.session_state["df_error"] = None
+        st.session_state["df_sources"] = []
+        st.session_state["df_errors"] = []
+        st.session_state["df_error"] = (
+            f"Could not create `{QUESTIONS_DIR.name}/`: {exc}"
+        )
+        return
+
+    df, loaded, errors = load_questions_dir(QUESTIONS_DIR)
+    st.session_state["df"] = df
+    st.session_state["df_sources"] = loaded
+    st.session_state["df_errors"] = errors
+    st.session_state["df_error"] = None if df is not None else (
+        f"No question files found in `{QUESTIONS_DIR.name}/`."
+    )
+    st.session_state.pop("df_source", None)
+    st.session_state.pop("df_upload_sig", None)
 
 
 def set_df(df: pd.DataFrame, source: str) -> None:
     """Replace the active dataframe (e.g. after an upload)."""
     st.session_state["df"] = df
-    st.session_state["df_source"] = source
+    st.session_state["df_sources"] = [{"file": source, "rows": len(df)}]
+    st.session_state["df_errors"] = []
     st.session_state["df_error"] = None
+    st.session_state["df_source"] = source
+    st.session_state["df_upload_sig"] = source
+
+
+def reload_from_dir() -> None:
+    """Drop any upload and re-scan `quiz_questions/` from disk."""
+    read_csv_from_path.clear()  # pick up edits to the files
+    st.session_state.pop("df", None)
+    st.session_state.pop("df_source", None)
+    st.session_state.pop("df_upload_sig", None)
+    init_session()

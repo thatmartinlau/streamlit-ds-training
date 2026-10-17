@@ -14,7 +14,12 @@ def render() -> None:
 
     df = st.session_state.get("df")
     if df is None:
-        st.info("No questions loaded. Upload a CSV in the sidebar to begin.")
+        st.title("🧠 Quiz")
+        st.info(
+            "No questions loaded. Upload a CSV in the sidebar, or drop CSV "
+            "files into `quiz_questions/` and click **Reload from "
+            "`quiz_questions/`**."
+        )
         return
 
     if not state.get_state("", "started") or not state.get_state("", "order"):
@@ -34,22 +39,31 @@ def _render_sidebar() -> None:
     uploaded = st.file_uploader(
         "Upload a questions CSV", type=["csv"], key="quiz_uploader"
     )
-    if uploaded is not None and uploaded.name != st.session_state.get("df_source"):
+    if (
+        uploaded is not None
+        and uploaded.name != st.session_state.get("df_upload_sig")
+    ):
         try:
             data.set_df(data.prepare(pd.read_csv(uploaded)), uploaded.name)
         except Exception as exc:  # noqa: BLE001
             st.error(f"Could not read the uploaded CSV: {exc}")
-            st.stop()
+            return
+
+    if st.button("🔄 Reload from quiz_questions/", use_container_width=True):
+        data.reload_from_dir()
+        st.rerun()
 
     df = st.session_state.get("df")
     if df is None:
         st.warning(
-            f"No file uploaded and `{data.DEFAULT_CSV_NAME}` was not found."
+            "No questions loaded. Upload a CSV or add files to "
+            "`quiz_questions/`."
         )
-        st.stop()
+        for err in st.session_state.get("df_errors", []):
+            st.caption(f"⚠️ `{err['file']}` — {err['error']}")
+        return
 
-    source = st.session_state.get("df_source") or "—"
-    st.caption(f"Loaded: `{source}` — {len(df)} question(s)")
+    _render_sources_summary()
 
     themes = data.all_themes(df)
     selected_themes = st.multiselect("Themes", options=themes, default=themes)
@@ -111,3 +125,22 @@ def _render_sidebar() -> None:
         mime="text/csv",
         use_container_width=True,
     )
+
+
+def _render_sources_summary() -> None:
+    sources = st.session_state.get("df_sources") or []
+    errors = st.session_state.get("df_errors") or []
+    total = sum(s["rows"] for s in sources)
+
+    if len(sources) == 1 and not errors:
+        st.caption(f"Loaded `{sources[0]['file']}` — {total} question(s)")
+        return
+
+    st.caption(
+        f"Loaded **{len(sources)}** file(s) — **{total}** question(s)"
+    )
+    with st.expander("Files", expanded=False):
+        for s in sources:
+            st.caption(f"`{s['file']}` — {s['rows']} question(s)")
+        for err in errors:
+            st.caption(f"⚠️ `{err['file']}` skipped — {err['error']}")
