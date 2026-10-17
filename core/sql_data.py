@@ -1,0 +1,247 @@
+"""Sample warehouse for the SQL training page (in-memory SQLite)."""
+
+import sqlite3
+
+import streamlit as st
+
+SAMPLE_DATA = {
+    "customers": {
+        "schema": "customer_id INTEGER PRIMARY KEY, name TEXT, signup_date DATE, country TEXT, segment TEXT",
+        "columns": ["customer_id", "name", "signup_date", "country", "segment"],
+        "rows": [
+            (1,  "Alice", "2022-01-15", "FR", "Enterprise"),
+            (2,  "Bob",   "2022-02-20", "US", "SMB"),
+            (3,  "Carol", "2022-03-10", "FR", "SMB"),
+            (4,  "Dan",   "2022-04-05", "DE", "Enterprise"),
+            (5,  "Eve",   "2022-05-12", "US", "Enterprise"),
+            (6,  "Frank", "2022-06-01", "FR", "SMB"),
+            (7,  "Gina",  "2022-07-18", "UK", "Startup"),
+            (8,  "Hugo",  "2022-08-23", "DE", "SMB"),
+            (9,  "Iris",  "2022-09-30", "ES", "Startup"),
+            (10, "Jack",  "2022-10-11", "US", "Enterprise"),
+            (11, "Kara",  "2022-11-05", "IT", "SMB"),
+            (12, "Liam",  "2022-12-19", "FR", "Enterprise"),
+            (13, "Mia",   "2023-01-08", "UK", "Startup"),
+            (14, "Noah",  "2023-02-14", "US", "SMB"),
+            (15, "Olga",  "2023-03-22", "DE", "Enterprise"),
+            (16, "Pete",  "2023-04-27", "FR", "Startup"),
+            (17, "Quinn", "2023-05-30", "US", "SMB"),
+            (18, "Rosa",  "2023-06-15", "ES", "Enterprise"),
+            (19, "Sam",   "2023-07-21", "IT", "Startup"),
+            (20, "Tina",  "2023-08-09", "UK", "SMB"),
+            (21, "Uma",   "2023-09-12", "FR", "SMB"),
+            (22, "Vic",   "2023-10-25", "DE", "Enterprise"),
+        ],
+    },
+    "orders": {
+        "schema": "order_id INTEGER PRIMARY KEY, customer_id INTEGER, order_date DATE, amount REAL, status TEXT",
+        "columns": ["order_id", "customer_id", "order_date", "amount", "status"],
+        "rows": [
+            (201, 1,  "2023-01-10", 250.0, "shipped"),
+            (202, 2,  "2023-01-25", 130.0, "shipped"),
+            (203, 3,  "2023-02-03", 100.0, "cancelled"),
+            (204, 4,  "2023-02-18", 170.0, "shipped"),
+            (205, 5,  "2023-03-02", 200.0, "shipped"),
+            (206, 1,  "2023-03-19", 150.0, "shipped"),
+            (207, 6,  "2023-04-05", 120.0, "returned"),
+            (208, 7,  "2023-04-21", 225.0, "shipped"),
+            (209, 8,  "2023-05-09", 150.0, "shipped"),
+            (210, 9,  "2023-05-27", 220.0, "cancelled"),
+            (211, 10, "2023-06-11", 265.0, "shipped"),
+            (212, 2,  "2023-06-29", 300.0, "shipped"),
+            (213, 11, "2023-07-14", 125.0, "shipped"),
+            (214, 12, "2023-07-30", 200.0, "returned"),
+            (215, 13, "2023-08-16", 140.0, "shipped"),
+            (216, 14, "2023-09-01", 160.0, "shipped"),
+            (217, 15, "2023-09-19", 210.0, "shipped"),
+            (218, 3,  "2023-10-04", 135.0, "shipped"),
+            (219, 16, "2023-10-22", 150.0, "cancelled"),
+            (220, 17, "2023-11-07", 200.0, "shipped"),
+            (221, 18, "2023-11-25", 260.0, "shipped"),
+            (222, 19, "2023-12-12", 60.0,  "shipped"),
+            (223, 20, "2023-12-28", 300.0, "shipped"),
+            (224, 1,  "2024-01-15", 120.0, "shipped"),
+            (225, 4,  "2024-02-02", 325.0, "shipped"),
+            (226, 5,  "2024-02-20", 125.0, "returned"),
+            (227, 7,  "2024-03-08", 230.0, "shipped"),
+            (228, 9,  "2024-03-26", 180.0, "shipped"),
+            (229, 11, "2024-04-13", 60.0,  "shipped"),
+            (230, 13, "2024-05-01", 120.0, "cancelled"),
+            (231, 15, "2024-05-19", 200.0, "shipped"),
+            (232, 17, "2024-06-06", 300.0, "shipped"),
+            (233, 19, "2024-06-24", 250.0, "shipped"),
+            (234, 2,  "2024-07-12", 100.0, "shipped"),
+            (235, 6,  "2024-07-30", 200.0, "shipped"),
+            (236, 8,  "2024-08-17", 255.0, "shipped"),
+            (237, 10, "2024-09-04", 160.0, "returned"),
+            (238, 12, "2024-09-22", 250.0, "shipped"),
+            (239, 14, "2024-10-10", 225.0, "shipped"),
+            (240, 16, "2024-10-28", 90.0,  "shipped"),
+            (241, 18, "2024-11-15", 160.0, "shipped"),
+            (242, 20, "2024-12-03", 150.0, "shipped"),
+            (243, 3,  "2024-12-21", 275.0, "shipped"),
+            (244, 5,  "2025-01-08", 200.0, "shipped"),
+            (245, 7,  "2025-01-26", 90.0,  "shipped"),
+            (246, 9,  "2025-02-13", 75.0,  "cancelled"),
+            (247, 11, "2025-03-03", 170.0, "shipped"),
+            (248, 13, "2025-03-21", 160.0, "shipped"),
+        ],
+    },
+    "order_items": {
+        "schema": "item_id INTEGER PRIMARY KEY, order_id INTEGER, product_id INTEGER, quantity INTEGER, unit_price REAL",
+        "columns": ["item_id", "order_id", "product_id", "quantity", "unit_price"],
+        "rows": [
+            (1001, 201, 1, 2, 75.0), (1002, 201, 2, 1, 100.0),
+            (1003, 202, 3, 2, 50.0), (1004, 202, 11, 1, 30.0),
+            (1005, 203, 2, 1, 100.0),
+            (1006, 204, 6, 1, 120.0), (1007, 204, 9, 2, 25.0),
+            (1008, 205, 10, 1, 200.0),
+            (1009, 206, 5, 3, 40.0), (1010, 206, 8, 2, 15.0),
+            (1011, 207, 4, 2, 60.0),
+            (1012, 208, 1, 1, 75.0), (1013, 208, 3, 3, 50.0),
+            (1014, 209, 7, 1, 150.0),
+            (1015, 210, 2, 2, 100.0), (1016, 210, 12, 1, 20.0),
+            (1017, 211, 6, 2, 120.0), (1018, 211, 9, 1, 25.0),
+            (1019, 212, 1, 4, 75.0),
+            (1020, 213, 3, 1, 50.0), (1021, 213, 8, 3, 15.0), (1022, 213, 11, 1, 30.0),
+            (1023, 214, 10, 1, 200.0),
+            (1024, 215, 5, 2, 40.0), (1025, 215, 12, 3, 20.0),
+            (1026, 216, 2, 1, 100.0), (1027, 216, 4, 1, 60.0),
+            (1028, 217, 7, 1, 150.0), (1029, 217, 11, 2, 30.0),
+            (1030, 218, 6, 1, 120.0), (1031, 218, 8, 1, 15.0),
+            (1032, 219, 1, 2, 75.0),
+            (1033, 220, 9, 4, 25.0), (1034, 220, 3, 2, 50.0),
+            (1035, 221, 10, 1, 200.0), (1036, 221, 4, 1, 60.0),
+            (1037, 222, 5, 1, 40.0), (1038, 222, 12, 1, 20.0),
+            (1039, 223, 2, 3, 100.0),
+            (1040, 224, 6, 1, 120.0),
+            (1041, 225, 7, 2, 150.0), (1042, 225, 9, 1, 25.0),
+            (1043, 226, 1, 1, 75.0), (1044, 226, 3, 1, 50.0),
+            (1045, 227, 10, 1, 200.0), (1046, 227, 11, 1, 30.0),
+            (1047, 228, 2, 1, 100.0), (1048, 228, 5, 2, 40.0),
+            (1049, 229, 8, 4, 15.0),
+            (1050, 230, 6, 1, 120.0),
+            (1051, 231, 4, 3, 60.0), (1052, 231, 12, 1, 20.0),
+            (1053, 232, 1, 2, 75.0), (1054, 232, 7, 1, 150.0),
+            (1055, 233, 3, 4, 50.0), (1056, 233, 9, 2, 25.0),
+            (1057, 234, 5, 1, 40.0), (1058, 234, 11, 2, 30.0),
+            (1059, 235, 10, 1, 200.0),
+            (1060, 236, 6, 2, 120.0), (1061, 236, 8, 1, 15.0),
+            (1062, 237, 2, 1, 100.0), (1063, 237, 4, 1, 60.0),
+            (1064, 238, 7, 1, 150.0), (1065, 238, 3, 2, 50.0),
+            (1066, 239, 1, 3, 75.0),
+            (1067, 240, 9, 2, 25.0), (1068, 240, 12, 2, 20.0),
+            (1069, 241, 5, 4, 40.0),
+            (1070, 242, 6, 1, 120.0), (1071, 242, 11, 1, 30.0),
+            (1072, 243, 10, 1, 200.0), (1073, 243, 1, 1, 75.0),
+            (1074, 244, 2, 2, 100.0),
+            (1075, 245, 4, 1, 60.0), (1076, 245, 8, 2, 15.0),
+            (1077, 246, 3, 1, 50.0), (1078, 246, 9, 1, 25.0),
+            (1079, 247, 7, 1, 150.0), (1080, 247, 12, 1, 20.0),
+            (1081, 248, 6, 1, 120.0), (1082, 248, 5, 1, 40.0),
+        ],
+    },
+    "products": {
+        "schema": "product_id INTEGER PRIMARY KEY, name TEXT, category TEXT, list_price REAL",
+        "columns": ["product_id", "name", "category", "list_price"],
+        "rows": [
+            (1,  "Widget",          "Hardware",  75.0),
+            (2,  "Gadget",          "Hardware", 100.0),
+            (3,  "License",         "Software",  50.0),
+            (4,  "Support",         "Services",  60.0),
+            (5,  "Sensor",          "Hardware",  40.0),
+            (6,  "Dashboard",       "Software", 120.0),
+            (7,  "Training",        "Services", 150.0),
+            (8,  "Cable",           "Hardware",  15.0),
+            (9,  "Plugin",          "Software",  25.0),
+            (10, "Consulting",      "Services", 200.0),
+            (11, "Warranty",        "Services",  30.0),
+            (12, "Adapter",         "Hardware",  20.0),
+            (13, "Add-on Pack",     "Software",  35.0),
+            (14, "Premium Support", "Services",  90.0),
+        ],
+    },
+    "events": {
+        "schema": "event_id INTEGER PRIMARY KEY, customer_id INTEGER, event_type TEXT, event_ts TIMESTAMP, page TEXT",
+        "columns": ["event_id", "customer_id", "event_type", "event_ts", "page"],
+        "rows": [
+            (1,  1,  "page_view",   "2024-01-10 10:00:00", "/home"),
+            (2,  1,  "page_view",   "2024-01-10 10:05:00", "/products"),
+            (3,  1,  "add_to_cart", "2024-01-10 10:10:00", "/cart"),
+            (4,  1,  "purchase",    "2024-01-10 10:15:00", "/checkout"),
+            (5,  2,  "page_view",   "2024-01-20 14:00:00", "/home"),
+            (6,  2,  "page_view",   "2024-01-20 14:03:00", "/pricing"),
+            (7,  3,  "page_view",   "2024-02-03 09:00:00", "/products"),
+            (8,  3,  "add_to_cart", "2024-02-03 09:10:00", "/cart"),
+            (9,  3,  "purchase",    "2024-02-03 09:20:00", "/checkout"),
+            (10, 4,  "page_view",   "2024-02-18 11:30:00", "/home"),
+            (11, 5,  "page_view",   "2024-03-02 16:00:00", "/products"),
+            (12, 5,  "purchase",    "2024-03-02 16:12:00", "/checkout"),
+            (13, 6,  "page_view",   "2024-04-05 08:45:00", "/home"),
+            (14, 7,  "page_view",   "2024-04-21 13:20:00", "/products"),
+            (15, 7,  "add_to_cart", "2024-04-21 13:25:00", "/cart"),
+            (16, 8,  "page_view",   "2024-05-09 10:00:00", "/pricing"),
+            (17, 9,  "page_view",   "2024-05-27 12:00:00", "/home"),
+            (18, 10, "page_view",   "2024-06-11 09:15:00", "/products"),
+            (19, 10, "purchase",    "2024-06-11 09:40:00", "/checkout"),
+            (20, 12, "page_view",   "2024-07-30 15:00:00", "/home"),
+            (21, 13, "page_view",   "2024-08-16 17:30:00", "/products"),
+            (22, 14, "page_view",   "2024-09-01 10:10:00", "/pricing"),
+            (23, 15, "page_view",   "2024-09-19 11:00:00", "/home"),
+            (24, 16, "page_view",   "2024-10-04 14:20:00", "/products"),
+            (25, 17, "page_view",   "2024-11-07 09:00:00", "/home"),
+            (26, 18, "page_view",   "2024-11-25 10:30:00", "/pricing"),
+            (27, 18, "purchase",    "2024-11-25 10:55:00", "/checkout"),
+            (28, 19, "page_view",   "2024-12-12 16:45:00", "/home"),
+            (29, 20, "page_view",   "2024-12-28 08:20:00", "/products"),
+            (30, 21, "page_view",   "2024-09-15 09:00:00", "/home"),
+            (31, 22, "page_view",   "2024-10-28 13:00:00", "/pricing"),
+        ],
+    },
+    "employees": {
+        "schema": "employee_id INTEGER PRIMARY KEY, name TEXT, role TEXT, department TEXT, manager_id INTEGER, salary REAL, hire_date DATE",
+        "columns": ["employee_id", "name", "role", "department", "manager_id", "salary", "hire_date"],
+        "rows": [
+            (1,  "Alice", "CEO",             "Executive",   None, 250000.0, "2018-01-01"),
+            (2,  "Bob",   "VP Sales",        "Sales",          1, 180000.0, "2018-06-15"),
+            (3,  "Carol", "VP Engineering",  "Engineering",    1, 185000.0, "2018-04-01"),
+            (4,  "Dan",   "Sales Rep",       "Sales",          2,  95000.0, "2019-03-10"),
+            (5,  "Eve",   "Sales Rep",       "Sales",          2,  92000.0, "2019-07-22"),
+            (6,  "Frank", "Senior Engineer", "Engineering",    3, 150000.0, "2019-01-15"),
+            (7,  "Grace", "Engineer",        "Engineering",    3, 120000.0, "2020-02-03"),
+            (8,  "Hank",  "Engineer",        "Engineering",    3, 118000.0, "2021-05-17"),
+            (9,  "Ivy",   "Data Analyst",    "Sales",          2,  88000.0, "2021-09-01"),
+            (10, "Jack",  "Data Analyst",    "Engineering",    3,  90000.0, "2022-01-10"),
+        ],
+    },
+}
+
+
+def build_db() -> sqlite3.Connection:
+    """Create and populate a brand-new in-memory warehouse."""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    for name, tbl in SAMPLE_DATA.items():
+        conn.execute(f"CREATE TABLE {name} ({tbl['schema']})")
+        placeholders = ",".join(["?"] * len(tbl["columns"]))
+        conn.executemany(
+            f"INSERT INTO {name} VALUES ({placeholders})",
+            tbl["rows"],
+        )
+    conn.commit()
+    return conn
+
+
+def get_db() -> sqlite3.Connection:
+    if "_sql_db" not in st.session_state:
+        st.session_state["_sql_db"] = build_db()
+    return st.session_state["_sql_db"]
+
+
+def reset_db() -> None:
+    old = st.session_state.get("_sql_db")
+    if old is not None:
+        try:
+            old.close()
+        except Exception:
+            pass
+    st.session_state["_sql_db"] = build_db()
