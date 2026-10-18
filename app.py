@@ -15,6 +15,8 @@ st.set_page_config(
 
 from core import data  # noqa: E402
 from views import quiz, sql, welcome  # noqa: E402
+from views import pandas as pandas_view
+
 
 data.init_session()
 
@@ -38,6 +40,12 @@ NAV_PAGES = [
         icon="🗄️",
         url_path="sql",
     ),
+    st.Page(
+        pandas_view.render, 
+        title="Pandas Training", 
+        icon="🐼", 
+        url_path="pandas"),
+
 ]
 
 st.navigation(NAV_PAGES).run()
