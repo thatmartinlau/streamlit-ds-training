@@ -13,28 +13,37 @@ _TABLE_CSS = """
     font-size: 0.85rem;
     margin: 0.5rem 0 1.5rem 0;
     table-layout: fixed;
+    color: inherit;
 }
 .ml-cheat-table th {
-    background: #eef1f6;
+    /* Fallback (neutral gray, readable on light and dark), then a
+       theme-aware tint derived from the active text color. */
+    background: rgba(128, 128, 128, 0.18);
+    background: color-mix(in srgb, currentColor 12%, transparent);
     text-align: left;
     padding: 10px;
-    border: 1px solid #d5d9e0;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-color: color-mix(in srgb, currentColor 28%, transparent);
     vertical-align: top;
     font-weight: 600;
+    color: inherit;
 }
 .ml-cheat-table td {
     padding: 10px;
-    border: 1px solid #d5d9e0;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-color: color-mix(in srgb, currentColor 20%, transparent);
     vertical-align: top;
     word-wrap: break-word;
     overflow-wrap: anywhere;
+    color: inherit;
+    background: transparent;
 }
-.ml-cheat-table tr:nth-child(even) td {
-    background: #fafbfc;
+.ml-cheat-table tbody tr:nth-child(even) td {
+    background: rgba(128, 128, 128, 0.07);
+    background: color-mix(in srgb, currentColor 5%, transparent);
 }
 </style>
 """
-
 
 def _render_table(columns: list[str], rows: list[list[str]], widths: list[str]) -> None:
     colgroup = "".join(f'<col style="width:{w}">' for w in widths)
