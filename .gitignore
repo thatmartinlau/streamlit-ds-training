@@ -1,2 +1,4 @@
 __pycache__/
 repomix-output.md
+.venv/
+.python-version

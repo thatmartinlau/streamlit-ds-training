@@ -16,6 +16,7 @@ st.set_page_config(
 from core import data  # noqa: E402
 from views import quiz, sql, welcome  # noqa: E402
 from views import pandas as pandas_view
+from views import cheatsheet as cheatsheet_view
 
 
 data.init_session()
@@ -45,7 +46,12 @@ NAV_PAGES = [
         title="Pandas Training", 
         icon="🐼", 
         url_path="pandas"),
-
+    st.Page(
+        cheatsheet_view.render,
+        title="ML Cheatsheet",
+        icon="📋",
+        url_path="cheatsheet",
+    ),
 ]
 
 st.navigation(NAV_PAGES).run()
