@@ -18,6 +18,7 @@ from views import quiz, sql, welcome  # noqa: E402
 from views import pandas as pandas_view
 from views import cheatsheet as cheatsheet_view
 from views import stats as stats_view
+from views import dynamic_quiz as dynamic_quiz_view
 
 
 data.init_session()
@@ -58,6 +59,12 @@ NAV_PAGES = [
         title="Stats Cheatsheet",
         icon="📋",
         url_path="stats",
+    ),
+    st.Page(
+        dynamic_quiz_view.render,
+        title="Dynamic Screen",
+        icon="✨",
+        url_path="dynamic-screen",
     ),
 ]
 
