@@ -103,8 +103,25 @@ these five H2 sections in this order:
 Table with columns: Question | Topic | Verdict | One-line reason.
 
 ## 2. Per-question breakdown
-For each question: what they got right, what was missing, and a model
-answer in 2-4 sentences.
+
+For each of the 5 questions, use EXACTLY this structure. Put a BLANK
+LINE between each labelled block (Right, Missing, Model answer) — do
+not run them together in one paragraph.
+
+**Q{n} — {Topic}**
+
+Right:
+{1-2 sentences on what the candidate got right. If the answer was
+Skipped, write "Nothing — question skipped."}
+
+Missing:
+{1-2 sentences on what was missing or wrong. If the answer was fully
+correct, write "Nothing material."}
+
+Model answer:
+{2-4 sentences giving a model answer, business-aware where relevant.}
+
+---
 
 ## 3. Topic-level diagnosis
 Which themes are solid, which are shaky, and any recurring pattern
