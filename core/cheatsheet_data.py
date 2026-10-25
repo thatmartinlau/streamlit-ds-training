@@ -613,6 +613,555 @@ CHEATSHEETS = {
         ],
     ),
         # ------------------------------------------------------------------ #
+    #  Neural networks — architectures and key mechanisms
+    # ------------------------------------------------------------------ #
+    "Neural Networks": _section(
+        "Method",
+        "Architectures and mechanisms for deep learning. Row shape is the "
+        "same as the other model tables: what it computes mechanically, why "
+        "the structure matters, when to reach for it, and what breaks. "
+        "Components (ResNet blocks, BatchNorm, Dropout) are included because "
+        "interviewers ask about them as often as about full architectures.",
+        [
+            ["MLP (feedforward)",
+             "A stack of fully-connected layers; each computes z = Wx + b "
+             "followed by a nonlinear activation (ReLU, tanh, GELU). Trained "
+             "end to end with backpropagation.",
+             "The generic feed-forward network: no structural prior on the input.",
+             "Tabular data with complex interactions; small-to-medium networks "
+             "where interpretability is not critical.",
+             "Simple, universal approximator, fast on small data, easy to debug.",
+             "No inductive bias → needs more data than trees; gradient "
+             "boosting usually beats MLPs on tabular data; ignores input "
+             "structure (pixels, time, graph)."],
+            ["CNN (Convolutional Network)",
+             "Learned filters (kernels) slide across the input computing local "
+             "dot products; the same filter is reused at every position "
+             "(weight sharing); pooling layers downsample spatial resolution.",
+             "Exploits translation invariance and spatial locality via weight "
+             "sharing, so parameter count stays low.",
+             "Images, audio spectrograms, any grid- or lattice-structured "
+             "data; also 1-D CNNs on sequences.",
+             "Parameter-efficient, strong vision baseline, translation-"
+             "equivariant, local structure learned automatically.",
+             "Requires spatial structure; large labelled datasets; not "
+             "rotation-invariant out of the box; pooling loses fine detail."],
+            ["RNN (Recurrent Network)",
+             "At each timestep, a hidden state h_t = f(W_h·h_{t-1} + W_x·x_t "
+             "+ b) is updated and passed forward; weights are shared across "
+             "time.",
+             "Handles variable-length sequences by carrying context forward "
+             "through a shared recurrent state.",
+             "Sequence tasks with local context (early NLP, taggers, small "
+             "time-series tasks).",
+             "Arbitrary sequence length; shared parameters; natural "
+             "formulation for order.",
+             "Vanishing and exploding gradients; poor long-range memory; "
+             "sequential → slow to train; superseded by attention in most "
+             "modern settings."],
+            ["LSTM / GRU",
+             "RNN variants with gating. LSTM has input, forget and output "
+             "gates that control the cell state; GRU merges them into reset "
+             "and update gates with fewer parameters.",
+             "Gates let the network carry information across many steps "
+             "without decaying, fixing the vanishing-gradient problem of "
+             "plain RNNs.",
+             "Long sequences, time-series classification / forecasting, NLP "
+             "before transformers.",
+             "Stable gradients, handles long dependencies, still competitive "
+             "on small sequence datasets.",
+             "Sequential (slow), more parameters than an RNN, almost entirely "
+             "superseded by transformers for NLP."],
+            ["Transformer",
+             "Self-attention computes softmax(QKᵀ / √d) · V over all "
+             "positions in parallel; positional encodings inject order; "
+             "feed-forward layers mix across features. Stacks of these blocks.",
+             "Parallelisable over sequence length and has a global receptive "
+             "field from the first layer — no recurrence needed.",
+             "NLP (translation, generation, retrieval), and increasingly "
+             "vision (ViT), speech, and tabular (FT-Transformer).",
+             "Parallel training, scales well with data and compute, "
+             "state-of-the-art across modalities, long-range dependencies.",
+             "Data-hungry, quadratic in sequence length, many parameters, "
+             "expensive to train and serve."],
+            ["Autoencoder",
+             "An encoder maps the input to a low-dimensional bottleneck; a "
+             "decoder reconstructs the input from that bottleneck; trained by "
+             "minimising reconstruction error (MSE, BCE).",
+             "Learns a compressed, unlabeled representation by forcing "
+             "information through a narrow bottleneck.",
+             "Dimensionality reduction, denoising (add noise, reconstruct "
+             "clean), anomaly detection (high reconstruction error = anomaly).",
+             "Unsupervised, nonlinear compression, no labels needed.",
+             "Latent space is not interpretable; can overfit by learning "
+             "identity if the bottleneck is too wide; needs a lot of data."],
+            ["VAE (Variational Autoencoder)",
+             "Encoder outputs the mean and log-variance of a latent "
+             "distribution; a sample is drawn via the reparameterisation "
+             "trick; the decoder reconstructs. Loss = reconstruction + KL "
+             "divergence to a prior.",
+             "Probabilistic latent space — you can sample from it and "
+             "interpolate smoothly between inputs.",
+             "Generative modelling with a usable latent space; anomaly "
+             "detection with calibrated uncertainty; semi-supervised learning.",
+             "Principled generative model; smooth, continuous latent space.",
+             "Blurry reconstructions vs GAN; posterior collapse; trickier to "
+             "train than a plain autoencoder."],
+            ["GAN (Generative Adversarial Network)",
+             "A generator turns noise into fakes; a discriminator tries to "
+             "tell fake from real; both are trained adversarially, so the "
+             "generator's output distribution approaches the data "
+             "distribution.",
+             "Learns the data distribution through a two-player game — no "
+             "explicit likelihood, no reconstruction loss.",
+             "Realistic image / audio / video generation, super-resolution, "
+             "data augmentation, image-to-image translation (CycleGAN).",
+             "Sharp, realistic samples, flexible generator architectures.",
+             "Unstable training, mode collapse, hard to evaluate (FID is "
+             "imperfect), sensitive to architecture and hyperparameters."],
+            ["Diffusion model",
+             "A forward process gradually adds noise to the data; a network "
+             "learns to reverse it step by step. Generation starts from pure "
+             "noise and iteratively denoises.",
+             "Trains a denoiser rather than a generator or an adversary; "
+             "generation is an iterative refinement, not one shot.",
+             "State-of-the-art image / video / audio generation; the backbone "
+             "of Stable Diffusion and DALL·E-class systems.",
+             "Best sample quality today; training is more stable than GANs; "
+             "controllable via guidance and conditioning.",
+             "Slow sampling (many denoising steps); expensive training; "
+             "memory-hungry for high resolutions."],
+            ["GNN (Graph Neural Network)",
+             "Each node's embedding is updated by aggregating (sum, mean or "
+             "attention) its neighbours' embeddings; repeated for k layers "
+             "so information propagates k hops.",
+             "Respects the graph structure — permutation-equivariant over "
+             "node order, and uses edges as first-class data.",
+             "Molecules (drug discovery), social networks, fraud rings, "
+             "recommendation with a user–item graph, knowledge graphs.",
+             "Uses graph structure natively; generalises CNNs to irregular "
+             "domains; strong on relational data.",
+             "Scalability (big graphs need sampling); oversmoothing on deep "
+             "networks; tooling still less mature than CNNs / transformers."],
+            ["Siamese network",
+             "Two (or more) copies of the same encoder with **shared weights** "
+             "embed two inputs; a contrastive or triplet loss pulls matching "
+             "pairs together and pushes mismatches apart in embedding space.",
+             "Compares inputs by distance in an embedding space instead of "
+             "classifying them directly — so it generalises to unseen "
+             "identities or categories.",
+             "Face verification, signature / document matching, retrieval, "
+             "one-shot and few-shot learning.",
+             "Few-shot friendly; the same encoder powers any query at "
+             "inference; embedding space is reusable.",
+             "Triplet / pair mining is finicky; needs careful negative "
+             "sampling; embedding is not interpretable."],
+            ["Residual connections (ResNet)",
+             "Each block computes F(x) and adds the input: output = F(x) + x. "
+             "The skip path lets gradients flow around blocks without "
+             "multiplication.",
+             "Fixes vanishing gradients in very deep networks and lets them "
+             "learn near-identity mappings trivially — the reason 100+ layer "
+             "networks became trainable.",
+             "Any deep network; the default building block for CNNs, and a "
+             "component of every transformer (residual + LayerNorm).",
+             "Enables deep networks; cheap; empirically large gains; nearly "
+             "universal in modern architectures.",
+             "Not a cure for all depth problems (very deep stacks still need "
+             "norm and careful init); minor parameter overhead."],
+            ["Batch Normalization",
+             "Normalizes each feature across the batch to zero mean and unit "
+             "variance, then rescales with learned γ and β. Applied to layer "
+             "inputs inside the network.",
+             "Stabilises and accelerates training and reduces sensitivity to "
+             "initialisation — the network can use larger learning rates.",
+             "Deep CNNs and MLPs; standard in ResNet-style architectures.",
+             "Faster convergence, larger LR, mild regularisation effect.",
+             "Batch-size-dependent (bad for small batches); behaves "
+             "differently at train vs inference (running stats); less used in "
+             "transformers, which prefer LayerNorm."],
+            ["Dropout",
+             "During training, randomly zeros a fraction p of neurons at each "
+             "step; at inference, activations are scaled by (1−p), or the "
+             "inverted-dropout variant scales during training instead.",
+             "A stochastic regulariser that approximates training an ensemble "
+             "of sub-networks — cheap way to fight overfitting.",
+             "Dense layers in MLPs and any large network prone to overfitting.",
+             "Reduces overfitting; cheap; simple to implement; complements "
+             "other regularisers.",
+             "Slows training; interacts awkwardly with BatchNorm in CNNs; the "
+             "effective network at inference differs from any single training "
+             "step, which can hurt if p is too high."],
+        ],
+        with_how=True,
+    ),
+        # ------------------------------------------------------------------ #
+    #  Activation functions
+    # ------------------------------------------------------------------ #
+    "Activation Functions": _section(
+        "Activation",
+        "The nonlinearity applied after every linear layer. Without it, a "
+        "stack of layers collapses to a single linear map. The choice matters "
+        "because it determines gradient flow, output range, sparsity, and "
+        "whether neurons can 'die' during training.",
+        [
+            ["ReLU",
+             "max(0, x) — zero for negatives, identity for positives.",
+             "The default. Piecewise-linear, roughly half the units zero per "
+             "forward pass, so activations are sparse and gradients are cheap.",
+             "Default hidden-layer activation for CNNs, MLPs and transformer "
+             "FFN blocks.",
+             "Fast, sparse, cheap gradient, no vanishing gradient on the "
+             "positive side.",
+             "Dying-ReLU: units stuck at 0 receive no gradient and stay dead; "
+             "unbounded output; non-zero-centered; not differentiable at 0."],
+            ["Leaky ReLU",
+             "max(αx, x) with α around 0.01 — a small slope on the negative "
+             "side.",
+             "Fixes dying ReLU by guaranteeing a nonzero gradient for x "
+             "negative, so a unit can recover.",
+             "When ReLU units are dying in a deep net; classic fix when "
+             "training stalls.",
+             "Cheap fix for dying units; unbounded output on the positive "
+             "side; still simple.",
+             "α is another hyperparameter; gains over ReLU are marginal in "
+             "practice; still non-smooth at 0."],
+            ["ELU",
+             "x for positives, α(e^x − 1) for negatives.",
+             "Smooth negative side that saturates, pushing the mean "
+             "activation closer to zero — reduces the shift that BatchNorm "
+             "has to correct.",
+             "Deeper MLPs where training instability suggests mean-shift "
+             "problems; when ReLU-family nets train poorly.",
+             "Smooth, near-zero-centered, gentler saturating tail than ReLU.",
+             "Needs exp so slower than ReLU; α hyperparameter; saturates on "
+             "very negative inputs."],
+            ["GELU",
+             "x · Φ(x), where Φ is the standard normal CDF — a smooth "
+             "probabilistic gate.",
+             "Non-monotonic on the negative side (a small bump before zero), "
+             "which empirically acts like a soft dropout on weak activations.",
+             "The default in modern transformer FFN blocks (BERT, GPT, ViT) "
+             "and most recent deep networks.",
+             "Smooth, differentiable everywhere, empirically strong in "
+             "transformers; often a small but reliable gain over ReLU.",
+             "More expensive than ReLU; needs an erf approximation; not "
+             "always better in CNNs."],
+            ["SiLU / Swish",
+             "x · σ(βx), with σ the sigmoid and β usually fixed to 1 "
+             "(learnable in some variants).",
+             "Self-gating: the sigmoid acts as a learned gate on the input, "
+             "so the activation is smooth and non-monotonic on negatives.",
+             "Modern vision models (EfficientNet, ConvNeXt) and some "
+             "transformers; when you want GELU's smoothness with a simpler "
+             "formula.",
+             "Smooth, self-gating, competitive with GELU in deep nets; only "
+             "slightly more expensive than ReLU.",
+             "Marginal advantage outside deep nets; extra `exp` cost per "
+             "unit."],
+            ["Sigmoid",
+             "1 / (1 + e^(−x)) — S-curve mapping any input to (0, 1).",
+             "Bounded, interpretable as a probability, but saturates hard on "
+             "both tails, which kills gradients.",
+             "Output layer for binary classification; gates inside LSTM / "
+             "GRU; attention masks.",
+             "Probability output; interpretable; smooth; classic.",
+             "Vanishing gradient (saturates); output not zero-centered — "
+             "slows downstream learning; slow to compute vs ReLU."],
+            ["Tanh",
+             "(e^x − e^(−x)) / (e^x + e^(−x)) — sigmoid shifted and scaled "
+             "to (−1, 1).",
+             "Zero-centered version of sigmoid, so downstream layers see "
+             "roughly balanced inputs.",
+             "Hidden layers in small RNNs; gates in recurrent cells; some "
+             "generative models.",
+             "Zero-centered (unlike sigmoid); stronger gradients than "
+             "sigmoid near zero.",
+             "Still saturates on both tails → vanishing gradient; expensive "
+             "(two exp calls)."],
+            ["Softmax",
+             "exp(x_i) / Σ_j exp(x_j) — a probability distribution over a "
+             "vector of logits.",
+             "Not a scalar function: it normalises across a vector, so the "
+             "outputs are comparable and sum to 1.",
+             "Multi-class output layer; attention weights; mixture-model "
+             "responsibilities.",
+             "Probabilities that sum to 1; differentiable; pairs cleanly "
+             "with cross-entropy.",
+             "Assumes mutually exclusive classes; numerically unstable "
+             "without the log-sum-exp trick; cannot express multi-label."],
+            ["Mish",
+             "x · tanh(softplus(x)), with softplus = log(1 + e^x).",
+             "Another smooth, non-monotonic activation with a small bump on "
+             "the negative side; empirically competitive with GELU / SiLU in "
+             "vision.",
+             "Occasionally used in deep vision models when you're happy to "
+             "tune alternatives empirically.",
+             "Smooth, unbounded, empirically competitive.",
+             "Expensive (two transcendental functions); rarely beats GELU or "
+             "SiLU; unfamiliar outside vision."],
+        ],
+        with_how=True,
+    ),
+
+    # ------------------------------------------------------------------ #
+    #  Deep learning components
+    # ------------------------------------------------------------------ #
+    "DL Components": _section(
+        "Component",
+        "The building blocks beyond layers and activations: normalisation, "
+        "regularisation, architecture pieces, initialisation, training "
+        "utilities and losses. BatchNorm, Dropout and residual connections "
+        "are covered under **Neural Networks**, so they are omitted here.",
+        [
+            # -- Normalisation ------------------------------------------- #
+            ["LayerNorm",
+             "Normalises across the **feature** dimension within each sample "
+             "(mean 0, variance 1), then rescales with learned γ and β.",
+             "Independent of batch size, so it works with small batches and "
+             "at inference without running stats — the opposite tradeoff from "
+             "BatchNorm.",
+             "The default in transformers and RNNs; any setting with small "
+             "or variable batch sizes.",
+             "Batch-size-independent, works in recurrent and sequence "
+             "settings, no train/inference mismatch.",
+             "Two extra parameters per feature; slightly slower than "
+             "BatchNorm; normalises across what may be heterogeneous "
+             "features."],
+            ["RMSNorm",
+             "Like LayerNorm but normalises only by the root mean square "
+             "(no mean subtraction); often drops the γ / β rescale.",
+             "Cheaper than LayerNorm — one fewer pass over the features, no "
+             "mean computation — and empirically just as effective.",
+             "Modern LLMs (Llama, T5 variants); anywhere LayerNorm cost "
+             "matters.",
+             "Faster than LayerNorm, fewer parameters, nearly the same "
+             "quality.",
+             "Less battle-tested than LayerNorm; the lack of mean "
+             "subtraction is a mild approximation."],
+            ["GroupNorm",
+             "Splits channels into groups and normalises within each group "
+             "per sample.",
+             "Batch-independent like LayerNorm but keeps some channel "
+             "grouping, which matters for convolutions — a compromise "
+             "between instance and layer normalisation.",
+             "Small-batch CNNs (detection, segmentation) where BatchNorm is "
+             "unreliable.",
+             "Batch-size-independent, works well on small batches, no "
+             "running statistics.",
+             "Group size is a hyperparameter; slower than BatchNorm when the "
+             "batch is large enough for BatchNorm to work."],
+            # -- Regularisation ------------------------------------------ #
+            ["Weight decay / L2",
+             "Adds λ‖w‖² to the loss, pulling weights toward zero "
+             "proportionally to their magnitude.",
+             "Shrinks all weights smoothly — reduces overfitting without "
+             "zeroing any single parameter.",
+             "Every DL training run — usually the primary regulariser.",
+             "Simple, one hyperparameter, differentiable, works with any "
+             "optimizer.",
+             "Shrinks large weights (which may carry the most signal) as much "
+             "as small ones; interacts with adaptive optimizers (use AdamW "
+             "for decoupled decay)."],
+            ["L1 regularisation",
+             "Adds λ‖w‖₁ to the loss, whose gradient is a constant sign "
+             "term.",
+             "Drives weights to exactly zero — sparsity, not just shrinkage.",
+             "When you want sparse features or a pruned network; rarely the "
+             "primary regulariser in DL.",
+             "Produces sparse solutions; sometimes aids interpretability.",
+             "Non-smooth at zero; interacts poorly with adaptive optimizers; "
+             "rarely used for deep nets — L2 + pruning is usually better."],
+            ["Label smoothing",
+             "Replaces hard targets {0, 1} with soft targets {ε/(K−1), "
+             "1 − ε} where K is the number of classes; typically ε = 0.1.",
+             "Prevents the network from becoming overconfident — logits "
+             "cannot grow without bound because the target is never exactly "
+             "1 or 0.",
+             "Classification training, especially for transformers and image "
+             "models; improves calibration and generalisation cheaply.",
+             "Cheap, one line, improves calibration, mild regularisation.",
+             "Can hurt when the task truly needs sharp confidence; "
+             "interacts with temperature scaling at inference; requires "
+             "retuning if ε is changed."],
+            ["Mixup / Cutmix",
+             "Mixup: blend two training samples and their labels with the "
+             "same random λ. Cutmix: paste a patch from one image into "
+             "another and blend the labels proportionally.",
+             "Augments the data at the sample-and-label level rather than "
+             "with hand-crafted transforms, teaching the network smooth "
+             "decision boundaries.",
+             "Image classification, and increasingly transformers fine-tuning "
+             "and tabular deep nets.",
+             "Improves generalisation and robustness; effective for "
+             "low-data regimes; near-free.",
+             "Confuses training for very fine-grained tasks (fine-grained "
+             "classification, detection); λ is another hyperparameter; not "
+             "for regression without adaptation."],
+            # -- Architecture -------------------------------------------- #
+            ["Attention / self-attention",
+             "Each token attends to all others via softmax(QKᵀ / √d) · V — "
+             "the query of one position is dot-producted with every key, "
+             "softmax-normalised, and used to weight the values.",
+             "Global receptive field from layer 1, parallel over the "
+             "sequence, and content-dependent (unlike convolution's fixed "
+             "filters).",
+             "Transformers, vision, multimodal models, and any task where "
+             "long-range interactions matter.",
+             "Parallel training, long-range dependencies, interpretable "
+             "attention maps, no fixed inductive bias.",
+             "Quadratic in sequence length (O(n²) memory and time); no "
+             "built-in notion of order (needs positional encoding); "
+             "attention maps are not reliable explanations."],
+            ["Positional encoding",
+             "Sinusoidal: fixed sin/cos waves of varying frequencies added "
+             "to embeddings. Learned: a trainable embedding per position. "
+             "Relative: RoPE or ALiBi, encoding pairwise distances directly "
+             "in attention scores.",
+             "Attention is permutation-invariant, so order must be injected "
+             "explicitly — the choice of how determines whether the model "
+             "can extrapolate to longer sequences.",
+             "Every transformer; RoPE / ALiBi are the modern defaults for "
+             "long-context LLMs.",
+             "Learned is simple and flexible; sinusoidal extrapolates; "
+             "relative variants handle long contexts best.",
+             "Learned does not extrapolate beyond training length; "
+             "sinusoidal is less effective than relative; RoPE adds "
+             "implementation complexity."],
+            ["Embedding layer",
+             "A lookup table mapping integer ids to dense vectors, trained "
+             "jointly with the rest of the model; mathematically a one-hot "
+             "matmul that scales to large vocabularies.",
+             "Learns distributed representations of discrete tokens — the "
+             "model can generalise to tokens it has not seen in similar "
+             "contexts.",
+             "Any categorical or token input: words, subwords, user ids, "
+             "products.",
+             "Cheap at inference, dense, joint-trained, generalises.",
+             "Large parameter cost for big vocabularies; treats tokens as "
+             "independent unless the architecture (attention / RNN) links "
+             "them; out-of-vocabulary tokens need a placeholder."],
+            ["Pooling / adaptive pooling",
+             "Max or average over a spatial or temporal window; adaptive "
+             "pooling specifies the output size and derives the kernel from "
+             "the input.",
+             "Downsamples and aggregates, reducing resolution and parameter "
+             "count while keeping translation tolerance.",
+             "CNNs (spatial), RNNs and transformers (sequence-level "
+             "aggregation), anywhere you need a fixed-size representation "
+             "from variable-size input.",
+             "Cheap, reduces spatial resolution, translation-"
+             "invariant, adaptive pooling handles any input size.",
+             "Loses fine-grained detail; adaptive pooling hides the "
+             "downsampling choice; max pooling has no gradient through "
+             "non-maximal positions."],
+            # -- Initialisation ------------------------------------------ #
+            ["Xavier / Glorot init",
+             "Initialises weights uniform or Gaussian with variance "
+             "scaled by 1 / (fan_in + fan_out) — one factor for incoming and "
+             "outgoing connection counts.",
+             "Keeps the variance of activations and gradients roughly "
+             "constant across layers, allowing deep nets to train without "
+             "immediate divergence.",
+             "Default init for **sigmoid** and **tanh** networks.",
+             "Simple, principled, dramatically improves deep-net "
+             "trainability over naive init.",
+             "Assumes symmetric activations; under-scales for ReLU "
+             "networks, where He init works better."],
+            ["He / Kaiming init",
+             "Same idea as Xavier but scaled by 2 / fan_in (for ReLU) — only "
+             "incoming connections matter because half of them are zeroed by "
+             "ReLU.",
+             "Compensates for ReLU's zeroing of negative units, so variance "
+             "stays stable through deep ReLU stacks.",
+             "The default init for ReLU-family networks, CNNs and MLPs.",
+             "Principled for ReLU; nearly universal in modern CNNs; a "
+             "noticeable stability gain over Xavier.",
+             "Not optimal for non-ReLU activations; requires knowing the "
+             "activation function at init time."],
+            # -- Training utilities -------------------------------------- #
+            ["Gradient clipping",
+             "Renormalises the gradient when its norm exceeds a threshold "
+             "(clip-by-norm) or per-element (clip-by-value), before the "
+             "optimizer step.",
+             "Bounds the magnitude of any single step — a critical stabiliser "
+             "for RNNs and transformers where a rare example can produce "
+             "exploding gradients.",
+             "RNNs, transformers, RL, anything with a heavy-tailed loss.",
+             "Cheap, one line, often the difference between training and "
+             "diverging.",
+             "Threshold is a hyperparameter; too aggressive and you cripple "
+             "learning; hides the underlying instability."],
+            ["Learning-rate warmup and schedules",
+             "Warmup: linearly increase the LR from 0 to its target over the "
+             "first few hundred to few thousand steps. Schedule: decay by "
+             "cosine, step, exponential, or reduce-on-plateau.",
+             "Warmup prevents large early updates from bad initialisation; "
+             "schedules let the model explore early and settle late.",
+             "Every modern DL training run; warmup is nearly mandatory for "
+             "transformers.",
+             "Cheap, empirical gains, robust default behaviour, improves "
+             "convergence.",
+             "More hyperparameters (warmup steps, peak LR, min LR); poorly "
+             "tuned warmup can hurt more than no warmup; interacts with "
+             "batch size."],
+            ["Optimizer: SGD vs Adam vs AdamW",
+             "SGD with momentum updates by velocity + gradient. Adam adds "
+             "per-parameter adaptive step sizes from running estimates of "
+             "first and second moments. AdamW decouples weight decay from "
+             "the gradient, fixing Adam's coupling.",
+             "Adaptive optimizers scale each parameter's step to its own "
+             "gradient history, which is why they converge faster on "
+             "ill-conditioned problems — at the cost of some "
+             "generalisation.",
+             "Adam / AdamW for transformers and most modern nets; SGD with "
+             "momentum for CNNs where the best generalisation is known to "
+             "come from it.",
+             "Adam / AdamW: fast convergence, minimal tuning. SGD: often best "
+             "final accuracy on vision.",
+             "Adam / AdamW: sometimes worse generalisation than SGD; AdamW is "
+             "the modern fix. SGD: needs careful LR scheduling."],
+            # -- Losses -------------------------------------------------- #
+            ["Cross-entropy loss",
+             "For class c and logits z: −log(softmax(z)_c). The gradient "
+             "with respect to the logits is simply (softmax(z) − y).",
+             "The canonical loss for classification — it is the negative "
+             "log-likelihood of the correct class, so it directly optimises "
+             "the probability the model assigns to the truth.",
+             "Every classification model; the default loss for multi-class "
+             "and (with sigmoid instead of softmax) multi-label tasks.",
+             "Principled, well-behaved gradients, pairs cleanly with softmax, "
+             "well-understood.",
+             "Sensitive to class imbalance; overconfident predictions; "
+             "pairs poorly with sigmoid when used by mistake for multi-class."],
+            ["Focal loss",
+             "Cross-entropy multiplied by (1 − p_t)^γ with γ around 2 — "
+             "down-weights easy examples and focuses on hard ones.",
+             "Explicitly addresses class imbalance by shrinking the loss "
+             "from confident, correct predictions; no resampling needed.",
+             "Object detection (RetinaNet), fraud detection, any heavily "
+             "imbalanced classification.",
+             "Handles imbalance without resampling; stable; effective on "
+             "rare classes.",
+             "Another hyperparameter (γ); can over-focus on noisy hard "
+             "examples; less common outside detection."],
+            ["Contrastive / triplet loss",
+             "Contrastive: pull matching pairs together and push mismatches "
+             "apart via a margin. Triplet: anchor-positive distance must "
+             "beat anchor-negative by a margin. Siamese / dual-encoder "
+             "training uses these.",
+             "Learns an embedding space where distance encodes similarity — "
+             "generalises to classes not seen at training time.",
+             "Face recognition, retrieval, sentence embeddings, "
+             "recommendation; any few-shot or open-set problem.",
+             "Few-shot friendly, reusable embedding, works without class "
+             "labels — only pairs or triplets.",
+             "Pair / triplet mining is finicky; needs careful negative "
+             "sampling; embedding space is not directly interpretable."],
+        ],
+        with_how=True,
+    ),
+        # ------------------------------------------------------------------ #
     #  Exploratory data analysis
     # ------------------------------------------------------------------ #
     "EDA": {
