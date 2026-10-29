@@ -1,0 +1,214 @@
+id: healthcare_readmit_01
+title: 30-Day Readmission Risk
+difficulty: hard
+target_role: DS / AI Consultant
+
+business_context: |
+  A hospital network wants to flag patients at risk of 30-day readmission
+  at the moment of discharge, so care coordinators can offer an
+  intervention (follow-up call, medication review). Coordinators have
+  capacity for ~50 patients per week across the network. A published
+  evaluation shows the intervention reduces readmission by ~20% for
+  patients who receive it. The network's Chief Medical Officer is
+  cautious: any tool that flags patients must be explainable, and any
+  disparities across demographic groups are unacceptable.
+
+stakeholders:
+  - Chief Medical Officer
+  - Director of Care Coordination
+  - Compliance / Health Equity lead
+
+dataset_card:
+  schema:
+    - {name: encounter_id, type: string}
+    - {name: patient_id, type: string}
+    - {name: admit_date, type: date}
+    - {name: discharge_date, type: date}
+    - {name: length_of_stay_days, type: int}
+    - {name: age_band, type: string}
+    - {name: sex, type: string}
+    - {name: race_ethnicity, type: string}
+    - {name: primary_diagnosis, type: string}
+    - {name: comorbidity_count, type: int}
+    - {name: prior_admissions_12m, type: int}
+    - {name: discharge_disposition, type: string}
+    - {name: medication_count_discharge, type: int}
+    - {name: discharge_summary_text, type: string}
+    - {name: readmitted_30d, type: binary}
+  target: readmitted_30d
+  sample_rows: |
+    encounter_id,patient_id,admit_date,discharge_date,length_of_stay_days,age_band,sex,race_ethnicity,primary_diagnosis,comorbidity_count,prior_admissions_12m,discharge_disposition,medication_count_discharge,discharge_summary_text,readmitted_30d
+    e_001,p_991,2024-02-03,2024-02-08,5,70-79,F,white,heart_failure,3,1,home,7,"...",1
+    e_002,p_120,2024-02-04,2024-02-06,2,40-49,M,black,diabetes_uncontrolled,2,0,home_health,5,"...",0
+    e_003,p_455,2024-02-05,2024-02-19,14,80+,F,asian,sepsis,5,3,snf,11,"...",1
+  size: "~180k discharges over 3 years from 6 hospitals."
+  quirks:
+    - "Discharge disposition is set by a clinician — a proxy for severity, but also correlated with 'likely to be readmitted' — borderline leakage if used naively."
+    - "Discharge summary text contains outcome-revealing phrases ('patient likely to require readmission', 'will follow up with cardiology')."
+    - "Same patient appears multiple times → random split leaks patient features across train/test."
+    - "Readmission rate ~13%, but varies from 7% (one hospital) to 18% (another) — site effects."
+    - "Race/ethnicity is a protected attribute — using it naively as a feature is a fairness issue, but omitting it entirely can also mask disparities."
+    - "Some readmissions are planned (scheduled surgery); the label mixes planned and unplanned."
+
+success_metric:
+  primary: "Calibration (calibration curve + Brier score) at the operating threshold, alongside precision@50/week."
+  secondary: "Sensitivity at the operating threshold, disaggregated by race_ethnicity and age_band."
+  why: "Clinicians act on the probability, not just the rank; and equity across groups is a hard requirement from the CMO."
+
+allowed_libraries: [pandas, scikit-learn, lightgbm, shap, fairlearn]
+default_deliverable: "A discharge-time risk score with a calibration report, a fairness audit across demographic groups, and a human-in-the-loop protocol."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "Coordinators act on probabilities, so calibration is essential."
+      - "Precision@50/week is the capacity constraint; sensitivity is the clinical guardrail."
+      - "Fairness across race/ethnicity and age bands is a hard requirement."
+      - "Decision is 'which patients get a follow-up call this week'."
+    common_mistakes:
+      - "Optimising AUC only."
+      - "Treating fairness as a 'nice to have'."
+    follow_up_questions:
+      - "Why is calibration more important than AUC for this use case?"
+      - "What's the harm of a false positive in this setting? A false negative?"
+    red_flags:
+      - "No mention of calibration or fairness."
+    model_answer_outline: |
+      Calibration is primary because the coordinator sees a probability and
+      uses it to prioritise. Precision@50/week is the hard budget.
+      Sensitivity disaggregated by race/ethnicity is the equity guardrail.
+      Cost asymmetry: false negatives are far worse clinically than false
+      positives.
+
+  data_audit:
+    expected_topics:
+      - "Patient-level leakage from random splits."
+      - "Discharge disposition and discharge summary text risk outcome leakage."
+      - "Planned readmissions pollute the label."
+      - "Site effects (7%–18% base rate)."
+    common_mistakes:
+      - "Using discharge_disposition as a feature without checking leakage."
+      - "Including discharge_summary_text as a raw feature."
+      - "Ignoring planned readmissions."
+    follow_up_questions:
+      - "Which columns would you drop, and why?"
+      - "How would you separate planned from unplanned readmissions?"
+    red_flags:
+      - "Keeps discharge_disposition without scrutiny."
+    model_answer_outline: |
+      Exclude discharge_summary_text (contains outcome cues). Scrutinise
+      discharge_disposition — drop or treat as the target of a leakage
+      check. Filter out planned readmissions (flag in the source). Split
+      by patient, not by encounter.
+
+  validation_strategy:
+    expected_topics:
+      - "GroupKFold on patient_id."
+      - "Time-based holdout — recent 6 months as final test."
+      - "Site-stratified reporting."
+    common_mistakes:
+      - "Random split across encounters."
+    follow_up_questions:
+      - "Why is group CV by patient essential here?"
+    red_flags:
+      - "Random split."
+    model_answer_outline: |
+      GroupKFold by patient_id to prevent patient leakage. Final test
+      set = most recent 6 months. Report metrics per hospital and per
+      demographic group.
+
+  feature_engineering:
+    expected_topics:
+      - "Prior admissions and comorbidities as the strongest signals."
+      - "Length of stay, medication count."
+      - "Text features: TF-IDF or an embedding — but only if the text can be scrubbed of outcome cues."
+      - "Race/ethnicity: monitor for fairness, don't naively include as a predictor."
+    common_mistakes:
+      - "Using race/ethnicity as a feature without a fairness plan."
+      - "Using raw text without scrubbing."
+    follow_up_questions:
+      - "How would you use the discharge summary text safely?"
+    red_flags:
+      - "Race/ethnicity in the feature set with no fairness discussion."
+    model_answer_outline: |
+      Core features: prior_admissions_12m, comorbidity_count, LOS,
+      age_band, primary_diagnosis (one-hot or target-encoded with folds).
+      Text only if scrubbed. Race/ethnicity monitored at the metric level,
+      not used as a predictor by default.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Baseline: prior_admissions_12m as a simple score (or LACE index)."
+      - "Model: LightGBM or logistic regression — interpretability matters."
+    common_mistakes:
+      - "Going straight to a GBM without a baseline or explainability plan."
+    follow_up_questions:
+      - "Why might a logistic regression be preferred here even if a GBM wins on AUC?"
+    red_flags:
+      - "No baseline, no interpretability discussion."
+    model_answer_outline: |
+      Baseline = LACE index or prior_admissions only. Model candidates:
+      logistic regression (interpretable) and LightGBM (with SHAP for
+      interpretability). Whichever wins on calibration + fairness.
+
+  training_evaluation:
+    expected_topics:
+      - "Calibration curve + Brier score + reliability diagram."
+      - "Sensitivity by race_ethnicity and age_band."
+      - "Precision@50/week."
+    common_mistakes:
+      - "Reporting only AUC or accuracy."
+    follow_up_questions:
+      - "How would you check calibration on a small subgroup?"
+    red_flags:
+      - "No subgroup reporting."
+    model_answer_outline: |
+      Reliability diagram per hospital site. Brier score overall and by
+      subgroup. Precision@50/week. Sensitivity disaggregated. Reject any
+      model whose sensitivity differs by >5pp across race groups.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "Deterministic splits by patient_id."
+      - "Pipeline includes the text vectoriser, so it's fit within folds."
+    common_mistakes:
+      - "Text vectoriser fit on the full data → leakage."
+    follow_up_questions:
+      - "How would you ensure text preprocessing doesn't leak?"
+    red_flags:
+      - "TF-IDF fit on the full corpus."
+    model_answer_outline: |
+      Pipeline includes TF-IDF. Split by patient. Persist the split.
+      Seed everything.
+
+  communication_reporting:
+    expected_topics:
+      - "Explainability to the CMO — SHAP summary, not a black box."
+      - "Fairness report to the Health Equity lead."
+      - "Operational protocol — who reviews what, escalation for high-risk."
+    common_mistakes:
+      - "Presenting AUC without a calibration story."
+    follow_up_questions:
+      - "How would you present a fairness gap if you found one?"
+    red_flags:
+      - "No protocol for the human in the loop."
+    model_answer_outline: |
+      CMO: calibration curve + SHAP summary + protocol ('a coordinator
+      reviews the top 50 each Monday; if the score is >0.4 and the
+      coordinator disagrees, escalate to the attending'). Health Equity:
+      per-group sensitivity table.
+
+  limitations_next_steps:
+    expected_topics:
+      - "Site effects — a model trained on 6 hospitals may not generalise."
+      - "Readmission label mixes planned and unplanned."
+      - "Prospective validation before deployment."
+    common_mistakes:
+      - "Deploying without a shadow-mode period."
+    follow_up_questions:
+      - "What would your shadow-mode protocol look like?"
+    red_flags:
+      - "Deploy immediately."
+    model_answer_outline: |
+      3-month shadow mode — score every discharge, don't act on it. Review
+      calibration drift and fairness monthly. Retrain quarterly.

@@ -3,3 +3,5 @@ repomix-output.md
 .venv/
 .python-version
 .streamlit/secrets.toml
+repomix.sh
+**/*.csv

@@ -1,0 +1,203 @@
+id: uplift_marketing_01
+title: Uplift Modeling for Weekly Promotions
+difficulty: medium
+target_role: DS / AI Consultant
+
+business_context: |
+  A retail brand runs a weekly 10%-off email promotion to a random 20% of
+  its customer base. A retrospective analysis shows the promotion drives
+  a 6% lift in purchases among recipients — but a significant share of
+  those customers would have purchased anyway. The email has a real cost
+  (margins + send cost). The CMO wants to target the promotion only at
+  customers whose behaviour is genuinely changed by it, using the same
+  weekly budget. They have 18 months of randomised send / no-send history.
+
+stakeholders:
+  - Chief Marketing Officer
+  - CRM / Lifecycle Lead
+  - Finance (margin impact)
+
+dataset_card:
+  schema:
+    - {name: customer_id, type: string}
+    - {name: week, type: date}
+    - {name: treatment, type: binary}          # 1 if emailed this week
+    - {name: purchased, type: binary}          # 1 if any purchase in week+1
+    - {name: spend, type: float}
+    - {name: tenure_weeks, type: int}
+    - {name: past_30d_orders, type: int}
+    - {name: past_30d_spend, type: float}
+    - {name: email_opens_30d, type: int}
+    - {name: preferred_category, type: string}
+  target: purchased
+  sample_rows: |
+    customer_id,week,treatment,purchased,spend,tenure_weeks,past_30d_orders,past_30d_spend,email_opens_30d,preferred_category
+    c_001,2024-03-04,1,1,84.20,52,2,120.00,8,womenswear
+    c_002,2024-03-04,0,0,0.00,14,0,0.00,0,womenswear
+    c_003,2024-03-04,1,0,0.00,88,4,310.00,15,home
+    c_004,2024-03-04,0,1,42.00,120,1,60.00,3,home
+  size: "~1.2M customer-weeks; treatment is randomised ~20/80 in the historical data."
+  quirks:
+    - "Randomisation was by customer-week, not by customer — the same customer can appear treated in one week and control in another."
+    - "Outcome `purchased` conflates 'would have bought anyway' with 'bought because of the email'."
+    - "Spend distribution is heavy-tailed — a few customers dominate total revenue."
+    - "Email opens_30d is post-treatment for the treated group — leakage if used naively."
+    - "There was a Q4 campaign override in 2023 — treatment assignment isn't fully random there."
+
+success_metric:
+  primary: "Qini coefficient (or uplift@top-20%) — the standard uplift-ranking metric."
+  secondary: "Incremental margin per email sent."
+  why: "The CMO's question is 'who is the promotion genuinely moving?', not 'who will purchase?' — those two rankings are different."
+
+allowed_libraries: [pandas, numpy, scikit-learn, lightgbm, causalml, econml]
+default_deliverable: "A per-customer uplift score, a Qini evaluation report, and a targeting policy that respects the weekly budget."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "The question is causal: 'who purchases because of the email', not 'who purchases'."
+      - "Qini / uplift@k, not AUC or accuracy."
+      - "Decision: which N customers get the email this week, given a fixed budget."
+    common_mistakes:
+      - "Framing as a response model (predict purchase) rather than an uplift model."
+      - "Optimising conversion rate, not incremental conversion."
+    follow_up_questions:
+      - "Why is a normal classification model the wrong tool here?"
+      - "What are the four uplift segments, and which do you care about?"
+    red_flags:
+      - "No distinction between response and uplift."
+    model_answer_outline: |
+      The four segments: persuadables (positive uplift), sure things (no
+      change), lost causes (never convert), sleeping dogs (negative
+      uplift). We want persuadables. Optimise Qini (or uplift@top-20%).
+      Metric for finance: incremental margin per email.
+
+  data_audit:
+    expected_topics:
+      - "Randomisation is by customer-week, not customer — cluster-level leakage risk."
+      - "Q4 2023 override breaks randomisation — exclude or adjust."
+      - "email_opens_30d is post-treatment for the treated — leakage."
+      - "Heavy-tailed spend."
+    common_mistakes:
+      - "Using email_opens_30d as a feature."
+      - "Ignoring the Q4 non-random period."
+    follow_up_questions:
+      - "How would you check that treatment assignment is genuinely random?"
+      - "Which features are post-treatment?"
+    red_flags:
+      - "Uses post-treatment features."
+    model_answer_outline: |
+      Drop email_opens_30d (post-treatment). Exclude Q4 2023 or add a
+      period indicator. Check covariate balance between treatment and
+      control in the remaining period — means and distributions should
+      match. Split by customer, not customer-week.
+
+  validation_strategy:
+    expected_topics:
+      - "Split by customer_id — the same customer in treated and control weeks would leak treatment effect."
+      - "Time-based holdout of the most recent 3 months."
+      - "Stratify by customer segment (tenure, past spend) for evaluation."
+    common_mistakes:
+      - "Random split by customer-week."
+    follow_up_questions:
+      - "Why is customer-level splitting essential for uplift?"
+    red_flags:
+      - "Random split on rows."
+    model_answer_outline: |
+      GroupKFold by customer_id. Final holdout = last 3 months. Report
+      Qini per customer tenure band.
+
+  feature_engineering:
+    expected_topics:
+      - "Behavioural features at the time of the email (past_30d, tenure)."
+      - "Categorical: preferred_category."
+      - "Do NOT use post-treatment features (email_opens_30d)."
+    common_mistakes:
+      - "Including post-treatment opens."
+    follow_up_questions:
+      - "Which features are pre-treatment and safe?"
+    red_flags:
+      - "Includes post-treatment features."
+    model_answer_outline: |
+      Pre-treatment only: tenure, past_30d_orders, past_30d_spend,
+      preferred_category. Split by customer.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Baseline: target everyone (current behaviour)."
+      - "Uplift models: two-model (T-learner), S-learner, X-learner, causal forest."
+      - "LightGBM-based T-learner is a pragmatic start."
+    common_mistakes:
+      - "A single classification model of `purchased`."
+      - "No baseline."
+    follow_up_questions:
+      - "How would you implement a T-learner?"
+      - "What's the trade-off vs. an X-learner or a causal forest?"
+    red_flags:
+      - "Uses a plain classification model of purchased as the uplift model."
+    model_answer_outline: |
+      Baseline: random 20% targeting = current process. Then a T-learner
+      (separate LightGBM per arm) or X-learner. Compare on Qini and
+      incremental margin. Causal forest if a random-forest base is
+      acceptable.
+
+  training_evaluation:
+    expected_topics:
+      - "Qini coefficient, uplift@top-20%, uplift by decile."
+      - "Per-segment evaluation."
+      - "Sanity check: mean uplift should match the randomised A/B lift."
+    common_mistakes:
+      - "Reporting AUC."
+    follow_up_questions:
+      - "How would you sanity-check that the model hasn't just learned to predict purchase?"
+    red_flags:
+      - "AUC as the headline metric."
+    model_answer_outline: |
+      Plot the Qini curve. Report uplift@top-20%. Decompose uplift by
+      decile. Sanity check: overall mean predicted uplift should match the
+      randomised A/B estimate.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "Seeds; customer-level splits saved."
+      - "Two-arm models kept in the same pipeline so both are trained on the same features."
+    common_mistakes:
+      - "Train/score drift between arms."
+    follow_up_questions:
+      - "How would you ensure both arms use identical preprocessing?"
+    red_flags:
+      - "Different preprocessing per arm."
+    model_answer_outline: |
+      Pipeline with a treatment-aware feature splitter. Both arms share
+      the transformer. Split index persisted.
+
+  communication_reporting:
+    expected_topics:
+      - "Qini → incremental margin per email."
+      - "The four uplift segments explained to the CMO."
+      - "Policy recommendation: target top-20% by uplift score."
+    common_mistakes:
+      - "Presenting Qini without a business translation."
+    follow_up_questions:
+      - "How would you present 'sleeping dogs' to a non-technical audience?"
+    red_flags:
+      - "No margin translation."
+    model_answer_outline: |
+      'We email the top 20% by uplift score. That's ~4pp incremental
+      purchase rate — ~$X incremental margin per email. We avoid the
+      10% of customers with negative predicted uplift (sleeping dogs).'
+
+  limitations_next_steps:
+    expected_topics:
+      - "Randomisation was by customer-week; interference between treated and control weeks could bias lift estimates."
+      - "Q4 override period excluded; re-validate before Q4."
+      - "Uplift estimates are noisy at the individual level — trust the rank, not the value."
+    common_mistakes:
+      - "Individual-level uplift treated as precise."
+    follow_up_questions:
+      - "How would you design a new A/B test to validate the uplift model?"
+    red_flags:
+      - "No prospective validation."
+    model_answer_outline: |
+      Run a 4-week A/B: treat top-20% by uplift vs. random-20%, measure
+      incremental margin. Retrain quarterly with refreshed randomisation.

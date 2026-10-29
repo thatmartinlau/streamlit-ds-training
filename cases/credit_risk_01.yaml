@@ -1,0 +1,221 @@
+id: credit_risk_01
+title: Consumer Credit Default Prediction
+difficulty: hard
+target_role: DS / AI Consultant
+
+business_context: |
+  A consumer lending fintech wants a 12-month probability-of-default (PD)
+  model on new loan applications. The PD is used for three decisions:
+  approve/decline, set the interest rate, and set the initial credit
+  limit. Regulations require: (a) adverse action reasons for every
+  decline, (b) demonstrated fairness across protected groups, (c) model
+  documentation sufficient for an internal audit. The fintech's current
+  model is a logistic scorecard — interpretable but underperforms on
+  recent vintages. They want to know whether an ML model is worth the
+  regulatory complexity.
+
+stakeholders:
+  - Chief Risk Officer
+  - Head of Credit Policy
+  - Compliance / Model Risk Management
+
+dataset_card:
+  schema:
+    - {name: application_id, type: string}
+    - {name: application_date, type: date}
+    - {name: loan_amount, type: float}
+    - {name: term_months, type: int}
+    - {name: income, type: float}
+    - {name: employment_length_months, type: int}
+    - {name: debt_to_income, type: float}
+    - {name: credit_bureau_score, type: int}
+    - {name: prior_delinquencies_24m, type: int}
+    - {name: num_open_accounts, type: int}
+    - {name: age_band, type: string}
+    - {name: region, type: string}
+    - {name: approved, type: binary}            # decision, not outcome
+    - {name: default_12m, type: binary, nullable: true}  # only for approved
+  target: default_12m
+  sample_rows: |
+    application_id,application_date,loan_amount,term_months,income,employment_length_months,debt_to_income,credit_bureau_score,prior_delinquencies_24m,num_open_accounts,age_band,region,approved,default_12m
+    a_001,2023-04-12,8000.00,36,62000,48,0.32,720,0,4,30-39,north,1,0
+    a_002,2023-04-12,15000.00,60,38000,6,0.55,580,2,9,20-29,south,0,
+    a_003,2023-04-13,5000.00,24,95000,120,0.18,760,0,2,40-49,east,1,0
+    a_004,2023-04-13,20000.00,60,45000,18,0.61,560,3,11,20-29,north,1,1
+  size: "~400k applications over 4 years; ~70% approved, so ~280k outcome rows."
+  quirks:
+    - "Only approved applications have outcome data — reject inference is required to learn the full applicant distribution."
+    - "credit_bureau_score is the strongest feature and is itself the output of another model — using it 'as is' is accepted but must be disclosed."
+    - "Age band and region are protected or proxy-protected attributes — cannot be used as features in most jurisdictions."
+    - "Defaults cluster by economic vintage — 2020 and 2023 vintages default at very different rates."
+    - "Prior approval decision affected who we have outcome data for — survivorship bias if ignored."
+
+success_metric:
+  primary: "Calibration (Brier + reliability diagram) + Gini/AUC."
+  secondary: "Fairness: disparate impact ratio (4/5 rule) and equal-opportunity difference across protected groups."
+  why: "PD drives pricing and limits — a well-ranked but poorly calibrated model misprices risk. And regulatory sign-off requires documented fairness."
+
+allowed_libraries: [pandas, scikit-learn, lightgbm, shap, fairlearn]
+default_deliverable: "A PD model with SHAP explainability, a fairness audit, a calibration report, and a recommendation on whether ML beats the existing scorecard on a risk-adjusted basis."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "PD is used for three decisions: approve/decline, rate, limit."
+      - "Calibration is non-negotiable."
+      - "Explainability and fairness are regulatory requirements, not nice-to-haves."
+      - "The real question: is the ML lift worth the regulatory complexity?"
+    common_mistakes:
+      - "Framing this as a pure AUC improvement exercise."
+      - "Ignoring the 'should we even do this?' question."
+    follow_up_questions:
+      - "What would make you say 'keep the scorecard'?"
+      - "Why is calibration more important than ranking here?"
+    red_flags:
+      - "Frames as 'beat the scorecard on AUC'."
+    model_answer_outline: |
+      We need calibrated PD for pricing, explainability for adverse action,
+      and fairness for sign-off. The right question is 'does the ML lift
+      justify the regulatory complexity?' — a logistic scorecard with
+      engineered features might close most of the gap with a fraction of
+      the audit burden.
+
+  data_audit:
+    expected_topics:
+      - "Only approved applicants have outcomes — reject inference required."
+      - "Vintage effects (2020 vs. 2023)."
+      - "Bureau score is itself a model output."
+      - "Protected attributes must not be used as features."
+      - "Age band and region are proxies for protected attributes."
+    common_mistakes:
+      - "Building a model on approved-only data and calling it the PD model."
+      - "Including age band as a feature."
+    follow_up_questions:
+      - "How would you handle the missing outcomes for rejected applications?"
+      - "Which columns would you drop on regulatory grounds?"
+    red_flags:
+      - "No reject inference plan."
+      - "Uses age_band as a feature."
+    model_answer_outline: |
+      Reject inference: parceling, augmentation, or a two-stage model.
+      Drop age_band, region (proxy-protected). Disclose bureau score as a
+      feature. Audit vintage effects — a model trained pre-2023 may not
+      calibrate on 2024.
+
+  validation_strategy:
+    expected_topics:
+      - "Time-based holdout by application_date — recent 12 months as test."
+      - "Vintage-stratified evaluation."
+      - "Backtesting across economic regimes if data allows."
+    common_mistakes:
+      - "Random split — leaks vintage patterns and overstates calibration."
+    follow_up_questions:
+      - "Why is a random split optimistic here?"
+    red_flags:
+      - "Random split."
+    model_answer_outline: |
+      Time-based holdout. Report calibration per vintage year — the 2020
+      and 2023 vintages should be evaluated separately. Backtest on 2021
+      as a 'middle' regime.
+
+  feature_engineering:
+    expected_topics:
+      - "DTI, income, employment length, prior delinquencies — standard."
+      - "Monotonicity expectations: higher income → lower risk; more delinquencies → higher risk."
+      - "Do NOT use protected attributes or proxies."
+    common_mistakes:
+      - "Adding dozens of engineered features that break monotonicity."
+      - "Including proxies for protected attributes."
+    follow_up_questions:
+      - "How would you enforce monotonicity?"
+    red_flags:
+      - "No monotonicity consideration."
+    model_answer_outline: |
+      Core features: DTI, income, employment length, prior delinquencies,
+      bureau score, num_open_accounts. Enforce monotonic constraints in
+      LightGBM where economically sensible. Audit correlations between
+      features and protected attributes.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Baseline: the existing logistic scorecard."
+      - "Candidate: LightGBM with monotonic constraints + SHAP."
+      - "Consider logistic regression with engineered features as a middle ground."
+    common_mistakes:
+      - "LightGBM vs. nothing — ignoring the middle option."
+    follow_up_questions:
+      - "What would the middle option look like?"
+    red_flags:
+      - "No baseline."
+    model_answer_outline: |
+      Baseline = current scorecard. Middle = logistic regression on the
+      same engineered features. Candidate = LightGBM with monotonic
+      constraints. Compare on calibration, fairness, and explainability
+      burden, not just Gini.
+
+  training_evaluation:
+    expected_topics:
+      - "Calibration curve per vintage."
+      - "Gini per vintage."
+      - "Fairness: disparate impact ratio and equal-opportunity difference."
+      - "SHAP global + local explanations for adverse action."
+    common_mistakes:
+      - "Reporting only Gini."
+    follow_up_questions:
+      - "How would you produce adverse action reasons from a GBM?"
+    red_flags:
+      - "No calibration or fairness reporting."
+    model_answer_outline: |
+      Reliability diagram per vintage. Gini by vintage. Fairness audit
+      (DIR + EO difference) across protected groups. SHAP for global
+      importance and per-decision reasons.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "Model versioning, feature definitions documented."
+      - "Fairness audit reproducible as code, not a slide."
+      - "Deterministic splits."
+    common_mistakes:
+      - "Fairness tested once at build time, not in CI."
+    follow_up_questions:
+      - "How would you embed fairness into the model pipeline?"
+    red_flags:
+      - "Manual fairness report."
+    model_answer_outline: |
+      Pipeline with calibration + fairness checks as pipeline steps.
+      Feature dictionary documented. Split persisted. Fairness audit runs
+      on every retrain.
+
+  communication_reporting:
+    expected_topics:
+      - "CRO: does ML beat the scorecard on calibration + fairness at acceptable audit cost?"
+      - "Head of Credit Policy: how does the model translate to approval/rate/limit decisions?"
+      - "Model Risk Management: the model documentation."
+    common_mistakes:
+      - "Selling AUC instead of risk-adjusted value."
+    follow_up_questions:
+      - "How would you frame 'ML is worth it' vs 'ML is not worth it' to the CRO?"
+    red_flags:
+      - "No honest cost-benefit framing."
+    model_answer_outline: |
+      'The ML model improves Gini by 4pp and calibration stays comparable.
+      The audit burden is ~3× the scorecard. My recommendation: adopt the
+      middle option (logistic on engineered features) — Gini improvement
+      of ~2.5pp with 1.2× the audit burden. Reserve the LightGBM for the
+      second vintage if the middle option isn't enough.'
+
+  limitations_next_steps:
+    expected_topics:
+      - "Reject inference assumes MAR — a strong assumption."
+      - "Vintage drift — monitor calibration monthly."
+      - "Regulatory change — a new rule could invalidate the model."
+    common_mistakes:
+      - "Treating reject inference as solved."
+    follow_up_questions:
+      - "What would trigger a model retrain?"
+    red_flags:
+      - "No monitoring plan."
+    model_answer_outline: |
+      Monthly calibration monitoring on the current vintage. Quarterly
+      fairness re-audit. Retrain when PSI > 0.1 or vintage calibration
+      drifts by >5pp. Regulatory review every 12 months.

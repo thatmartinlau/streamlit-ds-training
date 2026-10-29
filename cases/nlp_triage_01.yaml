@@ -1,0 +1,203 @@
+id: nlp_triage_01
+title: Support Ticket Triage
+difficulty: medium
+target_role: DS / AI Consultant
+
+business_context: |
+  A B2B SaaS company receives ~5,000 support tickets per week. Three
+  human triagers currently assign each ticket one of 12 categories and a
+  priority (P1–P4). Triagers are inconsistent on priority; response times
+  for P1 tickets vary by shift. The Head of Support wants the model to
+  suggest category + priority so triagers can accept or override. Auto-
+  routing is out of scope for v1 — every ticket still has a human in the
+  loop.
+
+stakeholders:
+  - Head of Support
+  - Support Engineering Lead
+  - Customer Success (who own P1 SLA)
+
+dataset_card:
+  schema:
+    - {name: ticket_id, type: string}
+    - {name: created_at, type: timestamp}
+    - {name: subject, type: string}
+    - {name: body, type: string}
+    - {name: customer_tier, type: string}       # enterprise, mid, smb
+    - {name: product_area, type: string}
+    - {name: category, type: string}            # 12 categories, primary label
+    - {name: category_secondary, type: string}  # 0–2 additional labels, ';'-sep
+    - {name: priority, type: string}            # P1–P4
+    - {name: resolution_time_hours, type: float}
+    - {name: escalated, type: binary}
+  target: "priority (and category)"
+  sample_rows: |
+    ticket_id,created_at,subject,body,customer_tier,product_area,category,category_secondary,priority,resolution_time_hours,escalated
+    t_001,2024-03-04 09:12,Billing charge doubled,We were charged twice this month...,enterprise,billing,billing,account;auth,P1,2.5,0
+    t_002,2024-03-04 11:40,API timeout on /export,/export times out after 60s on large datasets...,mid,api,api_errors,,P2,14.0,0
+    t_003,2024-03-05 03:21,Login fails for SSO users,Since this morning SSO users cannot log in...,enterprise,auth,auth,sso,P1,1.0,1
+  size: "~250k tickets over 3 years."
+  quirks:
+    - "Multi-label: a ticket can span up to 3 categories (e.g. billing + auth)."
+    - "Priorities are inconsistently assigned by triagers — treat the label as noisy."
+    - "P1 tickets are ~4% of tickets, but the cost of missing one is 100× a P4 miss."
+    - "Product launches introduce new vocabulary quarterly (concept drift)."
+    - "Body text contains customer-specific names, URLs, and PII — needs redaction before any LLM processing."
+    - "Tickets arriving after-hours have a longer resolution time by construction; don't confuse that with priority."
+
+success_metric:
+  primary: "Category: micro-F1 (multi-label). Priority: recall on P1 at a fixed precision budget (e.g. precision ≥ 0.6), with a human triager always in the loop."
+  secondary: "Calibration of P1 probability so triagers can see how confident the model is."
+  why: "Category is a ranking task — micro-F1 is standard. Priority is a cost-sensitive task — missing P1 is the primary business risk."
+
+allowed_libraries: [pandas, scikit-learn, lightgbm, sentence-transformers, transformers]
+default_deliverable: "A suggestion service that returns category + priority + confidence per ticket, a human-in-the-loop UI, and a monitoring dashboard."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "Multi-label for category, cost-sensitive for priority."
+      - "Human-in-the-loop — suggestions, not auto-routing."
+      - "P1 recall at a precision budget, not accuracy."
+    common_mistakes:
+      - "Single-label framing (12-way classification)."
+      - "Optimising accuracy."
+    follow_up_questions:
+      - "Why can't you treat category as single-label?"
+      - "How would you frame priority to the triagers?"
+    red_flags:
+      - "Single-label framing."
+    model_answer_outline: |
+      Category = multi-label (micro-F1). Priority = cost-sensitive —
+      report P1 recall at precision ≥ 0.6, plus calibration. Suggest,
+      don't auto-route. Triagers accept or override.
+
+  data_audit:
+    expected_topics:
+      - "Priorities are noisy — labels reflect triager judgement, not ground truth."
+      - "P1 is 4%."
+      - "PII in body text."
+      - "Concept drift from product launches."
+      - "After-hours resolution-time skew."
+    common_mistakes:
+      - "Treating triager labels as ground truth."
+      - "Ignoring PII."
+    follow_up_questions:
+      - "How would you estimate the noise in priority labels?"
+      - "What PII needs redacting and how?"
+    red_flags:
+      - "No PII consideration."
+    model_answer_outline: |
+      Sample 200 tickets, have a second triager label them, and measure
+      inter-annotator agreement on priority (likely kappa ~0.4 — noisy).
+      PII redaction: URLs, emails, customer names, tokens. Audit
+      vocabulary drift by month.
+
+  validation_strategy:
+    expected_topics:
+      - "Time-based split — most recent 3 months as test."
+      - "Stratify by customer_tier."
+    common_mistakes:
+      - "Random split — misses drift."
+    follow_up_questions:
+      - "Why does a random split overstate performance here?"
+    red_flags:
+      - "Random split."
+    model_answer_outline: |
+      Time-based holdout of the most recent 3 months. Report metrics by
+      quarter to detect drift. Stratify by tier and product_area.
+
+  feature_engineering:
+    expected_topics:
+      - "TF-IDF over subject + body as the baseline; sentence embeddings as an alternative."
+      - "Metadata features: customer_tier, product_area, ticket length, hour of day."
+      - "PII redaction before any text featurisation."
+    common_mistakes:
+      - "Going straight to a transformer with no baseline."
+    follow_up_questions:
+      - "When would TF-IDF beat embeddings?"
+      - "How would you build the baseline?"
+    red_flags:
+      - "No baseline; raw text used without redaction."
+    model_answer_outline: |
+      Baseline: TF-IDF + logistic regression. Then compare to sentence
+      embeddings + LightGBM. Feature set includes metadata (tier,
+      product_area, hour). PII redacted first.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Baseline: rule-based (regex for keywords) + TF-IDF + linear model."
+      - "Model: embeddings + LightGBM or fine-tuned small transformer."
+      - "Separate models for category and priority — different targets and metrics."
+    common_mistakes:
+      - "One model for both tasks."
+    follow_up_questions:
+      - "Why separate models?"
+      - "What's the cost/benefit of fine-tuning a transformer?"
+    red_flags:
+      - "No baseline."
+    model_answer_outline: |
+      Baseline: rules + TF-IDF. Model candidates: embeddings + LightGBM
+      (fast, cheap) vs. fine-tuned MiniLM (slower, more expensive).
+      Two models: one for multi-label category, one for priority.
+
+  training_evaluation:
+    expected_topics:
+      - "Micro-F1 + per-class F1 (catch classes that always miss)."
+      - "P1 recall at precision ≥ 0.6."
+      - "Calibration of P1 probability."
+      - "Evaluate per customer_tier."
+    common_mistakes:
+      - "Aggregate metrics only."
+    follow_up_questions:
+      - "Which class is the model most likely to under-perform on?"
+    red_flags:
+      - "No per-class or P1-specific metric."
+    model_answer_outline: |
+      Report micro-F1 and per-class F1. Report P1 recall at precision 0.6
+      and the calibration curve for P1. Break down by tier.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "PII redaction step is part of the pipeline (no post-hoc scrubbing)."
+      - "Time-based split saved."
+    common_mistakes:
+      - "Redaction done on the full dataset before splitting → drift between training and inference."
+    follow_up_questions:
+      - "How would you ensure redaction is identical at scoring time?"
+    red_flags:
+      - "Redaction applied only at training."
+    model_answer_outline: |
+      Redaction is a pipeline transformer. Split saved. Seeds set.
+
+  communication_reporting:
+    expected_topics:
+      - "P1 recall is the headline for the Support Engineering Lead."
+      - "Per-class F1 for triage quality — where does the model help, where does it hurt?"
+      - "Monitoring: coverage (how often the suggestion is accepted) and accuracy of accepted suggestions."
+    common_mistakes:
+      - "Presenting micro-F1 alone."
+    follow_up_questions:
+      - "How would you define 'the model is working' for triagers?"
+    red_flags:
+      - "No acceptance-rate story."
+    model_answer_outline: |
+      Lead with P1 recall at precision 0.6. Then category micro-F1 + per-
+      class misses. Then a dashboard: acceptance rate, acceptance accuracy,
+      P1 miss rate.
+
+  limitations_next_steps:
+    expected_topics:
+      - "Label noise in priority — measure and communicate."
+      - "Concept drift — monitor and retrain quarterly."
+      - "PII and compliance review."
+    common_mistakes:
+      - "No drift monitoring."
+    follow_up_questions:
+      - "What would trigger a retrain?"
+    red_flags:
+      - "Static model, no monitoring."
+    model_answer_outline: |
+      Monitor weekly acceptance rate and P1 miss rate. Retrain quarterly
+      or when drift exceeds a threshold. Compliance review of PII handling
+      before production.

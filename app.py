@@ -15,10 +15,11 @@ st.set_page_config(
 
 from core import data  # noqa: E402
 from views import quiz, sql, welcome  # noqa: E402
-from views import pandas as pandas_view
-from views import cheatsheet as cheatsheet_view
-from views import stats as stats_view
-from views import dynamic_quiz as dynamic_quiz_view
+from views import pandas as pandas_view  # noqa: E402
+from views import cheatsheet as cheatsheet_view  # noqa: E402
+from views import stats as stats_view  # noqa: E402
+from views import dynamic_quiz as dynamic_quiz_view  # noqa: E402
+from views import interview as interview_view  # noqa: E402
 
 
 data.init_session()
@@ -38,16 +39,23 @@ NAV_PAGES = [
         url_path="quiz",
     ),
     st.Page(
+        interview_view.render,
+        title="Interview Simulator",
+        icon="🎤",
+        url_path="interview",
+    ),
+    st.Page(
         sql.render,
         title="SQL Training",
         icon="🗄️",
         url_path="sql",
     ),
     st.Page(
-        pandas_view.render, 
-        title="Pandas Training", 
-        icon="🐼", 
-        url_path="pandas"),
+        pandas_view.render,
+        title="Pandas Training",
+        icon="🐼",
+        url_path="pandas",
+    ),
     st.Page(
         cheatsheet_view.render,
         title="ML Cheatsheet",

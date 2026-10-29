@@ -1,0 +1,214 @@
+id: retail_demand_01
+title: SKU-Level Weekly Demand Forecasting
+difficulty: medium
+target_role: DS / AI Consultant
+
+business_context: |
+  A mid-size fashion retailer (~400 stores, ~15,000 active SKUs) currently
+  lets store managers order weekly by gut. Stockouts lose ~3% of revenue;
+  overstock drives end-of-season markdowns and ties up cash. The VP of
+  Supply Chain wants a 4-week-ahead forecast at SKU × store × week grain
+  to drive replenishment. There is a fixed budget for one improvement —
+  better forecasting or a better ordering policy. Leadership wants the
+  forecast first.
+
+stakeholders:
+  - VP of Supply Chain
+  - Store Operations Lead
+  - Finance (cash flow / markdown budget)
+
+dataset_card:
+  schema:
+    - {name: sku_id, type: string}
+    - {name: store_id, type: string}
+    - {name: week_start, type: date}
+    - {name: units_sold, type: int}
+    - {name: price, type: float}
+    - {name: promo_flag, type: binary}
+    - {name: category, type: string}
+    - {name: size, type: string}
+    - {name: color, type: string}
+    - {name: launch_date, type: date}
+  target: units_sold
+  sample_rows: |
+    sku_id,store_id,week_start,units_sold,price,promo_flag,category,size,color,launch_date
+    sku_001,st_014,2024-01-01,42,29.99,0,t_shirt,M,black,2023-08-15
+    sku_002,st_014,2024-01-01,7,89.00,0,jacket,L,navy,2023-11-02
+    sku_003,st_022,2024-01-01,0,45.00,1,dress,S,red,2024-01-01
+    sku_004,st_022,2024-01-08,3,45.00,0,dress,S,red,2024-01-01
+  size: |
+    ~400 stores × ~15k SKUs × ~150 weeks, but the panel is sparse — many
+    SKU-store pairs have under 10 observations.
+  quirks:
+    - "Many SKU-store pairs are zero-inflated (not stocked, or stocked but not sold)."
+    - "New SKUs (launch_date) have no history — cold-start."
+    - "Promo flags are set in advance; the actual uplift depends on competitor activity not in the data."
+    - "Weekly aggregation hides within-week stockouts — a zero can mean 'sold out on Monday' or 'nobody bought it'."
+    - "Category-level demand shifts seasonally; last year's pattern is informative but not sufficient."
+
+success_metric:
+  primary: "WAPE (weighted absolute percentage error) at SKU-week grain, reported separately for established vs. new SKUs."
+  secondary: "Forecast bias (signed error) — systematic over-forecasting is as damaging as under-forecasting."
+  why: "WAPE is scale-free and robust to the many zero rows; signed bias catches systematic skew that WAPE hides."
+
+allowed_libraries: [pandas, numpy, scikit-learn, lightgbm, statsmodels, prophet]
+default_deliverable: "A SKU-week forecast, a backtest report, and a recommendation for the ordering policy that consumes the forecast."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "Forecast objective is 4 weeks ahead, at SKU × store × week grain."
+      - "WAPE for the headline; signed bias as a guardrail."
+      - "Forecast is an input to a decision (replenishment), not an end in itself."
+    common_mistakes:
+      - "Optimising RMSE — dominated by high-volume SKUs, under-weighting the long tail."
+      - "Choosing accuracy without distinguishing established vs. new SKUs."
+    follow_up_questions:
+      - "Why is WAPE a better headline than RMSE here?"
+      - "What does the forecast need to do for the ordering policy to be useful?"
+    red_flags:
+      - "Metric chosen without reference to the decision."
+    model_answer_outline: |
+      Forecast 4 weeks ahead at SKU × store × week. Headline metric WAPE,
+      reported separately for established and new SKUs (the two regimes
+      have different failure modes). Guardrail: signed bias by category.
+      The forecast feeds the ordering policy — it needs to be a
+      distribution, not just a point.
+
+  data_audit:
+    expected_topics:
+      - "Panel is sparse and zero-inflated."
+      - "Zeros conflate 'not stocked' with 'no demand'."
+      - "New SKUs have no history."
+      - "Seasonality at the category level."
+    common_mistakes:
+      - "Treating every zero as a demand observation."
+      - "Ignoring stockout censoring."
+    follow_up_questions:
+      - "How would you distinguish a true zero from a censored zero?"
+      - "What's the strategy for cold-start SKUs?"
+    red_flags:
+      - "No mention of censoring."
+    model_answer_outline: |
+      Audit the zero rate per SKU-store. Look for stockout indicators
+      (e.g. consecutive zero weeks after a nonzero run). Split the problem
+      into three regimes: established, new, and intermittent. Cold-start
+      uses category/color/size analogues.
+
+  validation_strategy:
+    expected_topics:
+      - "Rolling-origin cross-validation (backtest) — multiple folds across the last 12–24 weeks."
+      - "Never random split."
+      - "Backtest horizon = deployment horizon (4 weeks)."
+    common_mistakes:
+      - "Random train/test split."
+      - "Single holdout from one week — misses seasonality."
+    follow_up_questions:
+      - "Why can't you use K-fold here?"
+      - "How many backtest folds, and how would you size the holdout?"
+    red_flags:
+      - "Random split."
+    model_answer_outline: |
+      Rolling-origin CV: predict weeks 149–152, then 148–151, then 147–150,
+      etc., over the last 12–24 weeks. Report WAPE per fold to check
+      stability. Final holdout = the most recent 4 weeks.
+
+  feature_engineering:
+    expected_topics:
+      - "Lags (t-1, t-2, t-4, t-52) — careful with cold-start."
+      - "Rolling means/medians with non-leaky windows."
+      - "Calendar features: week-of-year, holiday, promo flag."
+      - "Categorical SKU/color/size features for cold-start transfer."
+    common_mistakes:
+      - "Using t-1 lag — leaks within the weekly aggregation."
+      - "Rolling window that includes the forecast week."
+    follow_up_questions:
+      - "How would you featurise a new SKU with no history?"
+      - "What's the leakage risk in rolling windows?"
+    red_flags:
+      - "Rolling window overlaps the target."
+    model_answer_outline: |
+      Lag features starting at t-2. Rolling means with windows that end at
+      t-2. Calendar + promo. For cold-start, use SKU attributes (category,
+      color, size) as features so the model can transfer from analogues.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Naive baselines: last observed value, seasonal naive (t-52), simple moving average."
+      - "A GBM (LightGBM) trained on panel lags."
+      - "Maybe Prophet / ETS per category."
+    common_mistakes:
+      - "No baseline."
+      - "Going straight to a neural net (DeepAR, N-BEATS) with 15k SKUs and a sparse panel."
+    follow_up_questions:
+      - "What three baselines would you establish first?"
+      - "When would you prefer Prophet to LightGBM?"
+    red_flags:
+      - "No baseline."
+    model_answer_outline: |
+      Baselines: seasonal naive (t-52), 4-week moving average, last value.
+      Model: LightGBM with lag + categorical features, one model across all
+      SKUs (hierarchical). Compare WAPE per regime.
+
+  training_evaluation:
+    expected_topics:
+      - "WAPE per fold, per regime, per category."
+      - "Residual diagnostics — are we under- or over-forecasting specific categories?"
+      - "Overfitting via backtest-fold consistency, not just a single number."
+    common_mistakes:
+      - "Reporting a single aggregate WAPE."
+      - "No regime or category breakdown."
+    follow_up_questions:
+      - "How would you detect overfitting with rolling-origin CV?"
+    red_flags:
+      - "No breakdown by segment."
+    model_answer_outline: |
+      Report WAPE per fold, per regime (established/new), and per category.
+      Plot signed error over time. Compare to the seasonal-naive baseline.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "Seeds; deterministic fold construction."
+      - "Feature pipeline reproducible (sklearn Pipeline or a feature-transformer)."
+      - "Backtest folds saved as index lists, not regenerated at scoring time."
+    common_mistakes:
+      - "Rolling windows computed on the fly at scoring, drifting from training."
+    follow_up_questions:
+      - "How would you guarantee that feature engineering at scoring matches training?"
+    red_flags:
+      - "On-the-fly rolling computation with different window boundaries."
+    model_answer_outline: |
+      Pipeline with a custom transformer that handles lags + rolling
+      features. Fold index lists persisted. Seeds on model + splits.
+
+  communication_reporting:
+    expected_topics:
+      - "WAPE by category to the supply chain team."
+      - "Value in markdown reduction or stockout avoidance."
+      - "Recommended ordering policy that consumes the forecast."
+    common_mistakes:
+      - "Talking only about WAPE and not about the decision."
+    follow_up_questions:
+      - "How would you sell the forecast improvement to Finance?"
+    red_flags:
+      - "No decision-level translation."
+    model_answer_outline: |
+      'WAPE drops from 0.42 to 0.31 — at last season's volumes that's ~$2.4M
+      of markdown reduced and ~$1.1M of avoided stockouts. Our recommended
+      policy uses the 60th percentile of the forecast distribution.'
+
+  limitations_next_steps:
+    expected_topics:
+      - "Censoring — we don't observe the counterfactual demand of stockouts."
+      - "Cold-start accuracy is worse; plan for monthly manual review of new SKUs."
+      - "Promo uplift is estimated from historical periods, and competitor activity is unobserved."
+    common_mistakes:
+      - "Generic 'more data would help'."
+    follow_up_questions:
+      - "What monitoring would you set up post-launch?"
+    red_flags:
+      - "Only generic limitations."
+    model_answer_outline: |
+      Censoring is a persistent bias. Cold-start accuracy needs monthly
+      review. Competitor activity is a lurking variable. Monitor WAPE by
+      category week over week and retrain quarterly.

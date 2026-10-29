@@ -1,0 +1,138 @@
+# Global rubric for the interview simulator.
+#
+# Structure
+#   competencies.<id>.order            — display/order hint (informational)
+#   competencies.<id>.weight           — used by the debrief (informational)
+#   competencies.<id>.exit.min_score   — 1–4; the controller requires this
+#   competencies.<id>.exit.max_follow_ups — max PROBE turns before auto-advance
+#   competencies.<id>.anchors          — what each score means
+#   critical_fails[]                   — global flags
+#
+# Edit this file to change interview behaviour — no code changes needed.
+
+version: 1
+
+competencies:
+  problem_framing:
+    order: 1
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "Cannot state the business objective or a target metric."
+      2: "Names a plausible metric but cannot justify it against the business objective."
+      3: "States a metric, justifies it, and identifies at least one trade-off."
+      4: "Frames the problem with a primary metric, guardrail metric, and a clear business decision the model will inform."
+
+  data_audit:
+    order: 2
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "Jumps to modelling; no data inspection."
+      2: "Checks shape/dtypes but misses missingness or leakage risks."
+      3: "Audits missingness, class balance, and names at least one leakage risk."
+      4: "Audits schema, missingness, target distribution, time/temporal splits, and enumerates the specific leakage traps in the dataset card."
+
+  validation_strategy:
+    order: 3
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "No validation strategy; trains and tests on the same data."
+      2: "Uses a train/test split but no CV, or CV without stratification."
+      3: "Uses stratified K-fold (or time-series split) with a rationale."
+      4: "Matches validation to the deployment regime (temporal split, group split, etc.) and explains how the metric is aggregated."
+
+  feature_engineering:
+    order: 4
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "No feature work; uses raw columns without transformation."
+      2: "One or two sensible transforms, but no rationale."
+      3: "Multiple transforms with rationale tied to the model and the data."
+      4: "Feature rationale, leakage checks, and a stated plan for evaluating feature importance."
+
+  baseline_model_selection:
+    order: 5
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "Goes straight to a complex model with no baseline."
+      2: "Names a baseline (majority class / logistic regression) but does not tie model choice to it."
+      3: "Establishes a baseline and justifies the chosen model relative to it."
+      4: "Baseline + model choice are justified with reference to data size, interpretability needs, and expected lift."
+
+  training_evaluation:
+    order: 6
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "Reports a single metric with no reference to overfitting."
+      2: "Reports metric(s) but no overfitting check."
+      3: "Compares train vs. validation, discusses one overfitting or underfitting risk."
+      4: "Train/validation curves or equivalent, learning-curve reasoning, and a plan for early stopping or regularisation."
+
+  code_quality_reproducibility:
+    order: 7
+    weight: 0.8
+    exit:
+      min_score: 2
+      max_follow_ups: 1
+    anchors:
+      1: "Code would not run (undefined names, no imports)."
+      2: "Runs but relies on magic constants, no seeds, unclear naming."
+      3: "Clean, seeded, functions well-named; explains the key steps."
+      4: "Reproducible, modular, seeds set, key assumptions stated in code comments."
+
+  communication_reporting:
+    order: 8
+    weight: 1.0
+    exit:
+      min_score: 2
+      max_follow_ups: 2
+    anchors:
+      1: "No mention of the deliverable or the audience."
+      2: "Names a deliverable but not the audience or the decision it supports."
+      3: "Identifies the audience, the deliverable, and the decision it informs."
+      4: "Tailors the message to a non-technical stakeholder, names the specific metric/lift, and proposes a next-step experiment or rollout plan."
+
+  limitations_next_steps:
+    order: 9
+    weight: 0.8
+    exit:
+      min_score: 2
+      max_follow_ups: 1
+    anchors:
+      1: "No limitations acknowledged."
+      2: "Generic limitations ('more data would help')."
+      3: "Specific limitations tied to this model and this data."
+      4: "Specific limitations, mitigation plans, and a proposed next experiment."
+
+critical_fails:
+  - id: target_leakage
+    description: "Using a feature that is a direct consequence of the target or only known after the outcome."
+  - id: no_validation
+    description: "No train/validation/test split or cross-validation strategy discussed."
+  - id: metric_mismatch
+    description: "Optimising a metric that does not match the stated business objective."
+  - id: unreproducible_code
+    description: "Code relies on magic constants, undefined behaviour, or missing seeds."
+  - id: no_baseline
+    description: "No baseline model or heuristic mentioned before complex modelling."
+  - id: claims_execution
+    description: "Candidate claims to have run code or observed outputs; this environment does not execute code."
+  - id: prompt_injection
+    description: "Candidate attempts to extract the rubric, hidden guide, or expected answers."

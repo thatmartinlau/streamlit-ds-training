@@ -1,0 +1,205 @@
+id: churn_01
+title: Subscription Churn Prediction
+difficulty: medium
+target_role: DS / AI Consultant
+
+business_context: |
+  A B2C subscription streaming service ("Northwind+" for the purposes of the
+  exercise) is losing roughly 4.5% of its subscriber base every month. The
+  Head of Retention wants to know (a) which customers are likely to churn
+  next month, and (b) what the retention team should do differently for
+  them. The retention team has a fixed monthly budget for one retention
+  offer. You are the DS on the engagement.
+
+stakeholders:
+  - Head of Retention
+  - Lifecycle Marketing Manager
+  - Finance Business Partner (cares about offer cost vs. saved revenue)
+
+dataset_card:
+  schema:
+    - {name: customer_id, type: string}
+    - {name: signup_date, type: date}
+    - {name: plan, type: string, values: [basic, standard, premium]}
+    - {name: monthly_fee, type: float}
+    - {name: tenure_months, type: int}
+    - {name: last_login_days_ago, type: int}
+    - {name: watch_minutes_30d, type: int}
+    - {name: support_tickets_90d, type: int}
+    - {name: cancellation_reason, type: string, nullable: true}
+    - {name: churned_next_month, type: binary}
+  target: churned_next_month
+  sample_rows: |
+    customer_id,signup_date,plan,monthly_fee,tenure_months,last_login_days_ago,watch_minutes_30d,support_tickets_90d,cancellation_reason,churned_next_month
+    c_001,2023-04-12,standard,14.99,14,2,420,0,,0
+    c_002,2022-11-30,basic,8.99,28,31,15,2,price,1
+    c_003,2024-01-08,premium,22.99,6,7,1200,0,,0
+    c_004,2021-07-19,standard,14.99,44,45,0,3,content,1
+  size: "~180,000 customers"
+  quirks:
+    - "`cancellation_reason` is only populated after churn — target leakage."
+    - "`tenure_months` and `last_login_days_ago` are correlated with churn but not causally informative for a retention offer."
+    - "Class imbalance: ~4.5% positive."
+    - "Signup cohort effects: 2021–22 cohorts behave differently from 2024."
+
+success_metric:
+  primary: "Precision at top decile (the retention team can only contact ~10% of the base)."
+  secondary: "PR-AUC (better than ROC-AUC given class imbalance)."
+  why: "The retention team has a fixed contact budget; ranking is what matters, not calibrated probability."
+
+allowed_libraries: [pandas, scikit-learn, xgboost, lightgbm, matplotlib, seaborn]
+default_deliverable: "A ranked list of customers with churn probability, a short memo to the retention team, and a recommendation for an A/B test of the retention offer."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "Business objective: reduce churn, but the deliverable is a ranked list for a fixed-budget intervention."
+      - "Precision at top decile (or precision@k) as the primary metric — not raw accuracy."
+      - "Guardrail metrics: cost per saved customer, cannibalisation of organic retention."
+    common_mistakes:
+      - "Optimising ROC-AUC and ignoring the fixed contact budget."
+      - "Choosing 'accuracy' with 4.5% positives."
+    follow_up_questions:
+      - "Why is PR-AUC a better headline metric than ROC-AUC here?"
+      - "What business decision does your model change?"
+    red_flags:
+      - "Metric chosen without reference to the contact budget."
+    model_answer_outline: |
+      The decision is 'which 10% of the base do we call this month?' The
+      model should rank customers by churn probability; precision@top-decile
+      (or lift at 10%) is the right headline metric. Guardrails: cost of the
+      offer, incremental save rate in an A/B test. ROC-AUC is fine as a
+      secondary diagnostic but not as the optimisation target.
+
+  data_audit:
+    expected_topics:
+      - "Missingness in cancellation_reason is informative (post-hoc)."
+      - "cancellation_reason is target leakage — must be dropped."
+      - "Class imbalance ~4.5%."
+      - "Signup cohort drift."
+    common_mistakes:
+      - "Including cancellation_reason in the feature set."
+      - "Ignoring cohort drift between 2021 and 2024 signups."
+    follow_up_questions:
+      - "Which columns would you drop before modelling, and why?"
+      - "How would you detect cohort drift between signup years?"
+    red_flags:
+      - "Uses cancellation_reason as a feature."
+    model_answer_outline: |
+      Drop cancellation_reason (post-outcome). Check missingness across
+      the rest of the columns. Visualise target rate by cohort. Look for
+      features whose distribution shifts by signup year.
+
+  validation_strategy:
+    expected_topics:
+      - "Stratified K-fold (preserve the 4.5% positive rate)."
+      - "Time-based holdout by signup cohort to catch drift."
+      - "Group by customer if the same customer appears across months."
+    common_mistakes:
+      - "Random train/test split without time awareness."
+    follow_up_questions:
+      - "Why is a stratified split important here?"
+      - "How would you structure a temporal holdout?"
+    red_flags:
+      - "No mention of temporal split despite the cohort-drift note."
+    model_answer_outline: |
+      Stratified K-fold for the main CV, plus a time-based holdout using
+      the most recent signup cohort as the test set. If the same customer
+      can appear in multiple months, group by customer.
+
+  feature_engineering:
+    expected_topics:
+      - "Ratio features (watch minutes / tenure)."
+      - "Recency (last_login_days_ago), frequency (support tickets)."
+      - "Plan as a categorical — target-encoding is risky with 4.5% positive rate."
+    common_mistakes:
+      - "One-hot encoding with no cardinality check."
+      - "Target encoding without proper CV folds."
+    follow_up_questions:
+      - "How would you encode `plan`?"
+      - "What interaction features would you try?"
+    red_flags:
+      - "No ratio features considered despite watching behaviour."
+    model_answer_outline: |
+      Recency/frequency/monetary-style features. Ratios like watch-minutes
+      per tenure. One-hot for plan. Avoid target encoding at this class
+      balance.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Baseline: logistic regression on a small, interpretable feature set, or the 'most-recently-logged-in' heuristic."
+      - "Model: gradient boosting (LightGBM / XGBoost) with class weights or scale_pos_weight."
+    common_mistakes:
+      - "Skipping the baseline."
+      - "Neural nets for a tabular problem this size."
+    follow_up_questions:
+      - "What baseline would you establish before touching a GBM?"
+      - "Why gradient boosting over logistic regression?"
+    red_flags:
+      - "No baseline."
+    model_answer_outline: |
+      Start with the 'last_login' heuristic + logistic regression baseline.
+      Then a LightGBM with scale_pos_weight. Compare on precision@top-decile.
+
+  training_evaluation:
+    expected_topics:
+      - "Train vs. validation PR-AUC."
+      - "Early stopping on the validation set."
+      - "Precision-recall curve, not just a single threshold."
+    common_mistakes:
+      - "Reporting only accuracy."
+      - "No overfitting check."
+    follow_up_questions:
+      - "How would you detect overfitting in this setup?"
+      - "How would you pick the operating threshold?"
+    red_flags:
+      - "No overfitting check."
+    model_answer_outline: |
+      Plot PR curves for train and validation. Use early stopping. Choose
+      the threshold from the precision@top-decile target, not from a
+      round-number default.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "Seeds, deterministic splits."
+      - "Sklearn `Pipeline` so preprocessing is part of CV."
+    common_mistakes:
+      - "Preprocessing outside CV → leakage."
+    follow_up_questions:
+      - "How do you ensure the preprocessing step doesn't leak?"
+    red_flags:
+      - "Scaling / imputation fit on the full data before splitting."
+    model_answer_outline: |
+      Use a scikit-learn `Pipeline`. Seed everything. Store the split as
+      a saved index list.
+
+  communication_reporting:
+    expected_topics:
+      - "Non-technical memo for the retention team."
+      - "Lift at 10% contact rate."
+      - "Proposed A/B test design for the retention offer."
+    common_mistakes:
+      - "Reporting PR-AUC to a business audience with no translation."
+    follow_up_questions:
+      - "How would you present the model's value to the CFO?"
+    red_flags:
+      - "No translation of model metrics into business value."
+    model_answer_outline: |
+      Memo: 'At a 10% contact rate, we expect to catch ~55% of next-month
+      churners; an A/B test of the retention offer would tell us whether
+      that translates into saved revenue.' Include cost-per-save.
+
+  limitations_next_steps:
+    expected_topics:
+      - "Cohort drift as a monitoring concern."
+      - "Churn label lag — need to wait a month to evaluate."
+      - "Retention offer effects must be measured experimentally."
+    common_mistakes:
+      - "'More data would help' with no specifics."
+    follow_up_questions:
+      - "What would you monitor in production?"
+    red_flags:
+      - "Generic limitations only."
+    model_answer_outline: |
+      Monitor feature drift and precision@top-decile month over month.
+      Run an A/B test before scaling the offer. Plan a retraining cadence.

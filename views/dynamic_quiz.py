@@ -2,45 +2,17 @@
 
 import streamlit as st
 
+from core import auth
 from core import dynamic_quiz as dq
 
 
 def render() -> None:
-    if not _is_unlocked():
-        _render_gate()
+    if not auth.password_gate(
+        title="🔒 Dynamic Screen",
+        session_key="_dyn_unlocked",
+    ):
         return
     _render_page()
-
-
-# --------------------------------------------------------------------------- #
-#  Password gate
-# --------------------------------------------------------------------------- #
-def _is_unlocked() -> bool:
-    return bool(st.session_state.get("_dyn_unlocked", False))
-
-
-def _render_gate() -> None:
-    st.title("🔒 Dynamic Screen")
-    st.markdown(
-        "This feature is password-protected. Enter the password below to "
-        "unlock it."
-    )
-    pwd = st.text_input(
-        "Password", type="password", key="_dyn_pwd_input"
-    )
-    if st.button("Unlock", type="primary"):
-        expected = dq.get_secret("DEEPSEEK_PASSWORD")
-        if not expected:
-            st.error(
-                "No password is configured. Add `DEEPSEEK_PASSWORD` to "
-                "`.streamlit/secrets.toml`."
-            )
-            return
-        if pwd == expected:
-            st.session_state["_dyn_unlocked"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
 
 
 # --------------------------------------------------------------------------- #
@@ -70,19 +42,6 @@ def _render_page() -> None:
         _render_evaluating()
     elif phase == "done":
         _render_done()
-
-
-def _reset_state() -> None:
-    for key in (
-        "_dyn_phase",
-        "_dyn_questions",
-        "_dyn_answers",
-        "_dyn_index",
-        "_dyn_feedback",
-        "_dyn_eval_error",
-    ):
-        st.session_state.pop(key, None)
-
 
 # --------------------------------------------------------------------------- #
 #  Phase: setup

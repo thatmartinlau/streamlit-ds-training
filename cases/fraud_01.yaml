@@ -1,0 +1,184 @@
+id: fraud_01
+title: Card-Not-Present Fraud Detection
+difficulty: hard
+target_role: DS / AI Consultant
+
+business_context: |
+  A payments provider processes ~2M card-not-present transactions per day.
+  The fraud team currently blocks any transaction above a fixed dollar
+  threshold and reviews the rest manually. They want a model that
+  prioritises manual review so that a small analyst team can focus on the
+  highest-value cases. The cost of a missed fraud is the transaction
+  amount; the cost of a false positive is the analyst's time (~$8) plus
+  the customer-friction cost.
+
+stakeholders:
+  - Head of Fraud Operations
+  - Risk & Compliance
+  - Engineering Lead (wants a real-time scoring service)
+
+dataset_card:
+  schema:
+    - {name: txn_id, type: string}
+    - {name: card_id, type: string}
+    - {name: amount, type: float}
+    - {name: merchant_category, type: string}
+    - {name: country, type: string}
+    - {name: is_new_card, type: binary}
+    - {name: txn_hour, type: int}
+    - {name: chargeback_flag, type: binary, nullable: true}
+    - {name: label_is_fraud, type: binary}
+  target: label_is_fraud
+  sample_rows: |
+    txn_id,card_id,amount,merchant_category,country,is_new_card,txn_hour,chargeback_flag,label_is_fraud
+    t_001,c_991,42.10,grocery,FR,0,14,,0
+    t_002,c_120,1899.00,electronics,NG,1,3,true,1
+    t_003,c_992,12.50,transport,FR,0,8,,0
+  size: "~700M transactions; ~0.15% fraud."
+  quirks:
+    - "`chargeback_flag` arrives 30–90 days after the transaction — target leakage if used as a feature."
+    - "Fraud patterns drift quickly (weeks, not months)."
+    - "Extreme class imbalance (~0.15%)."
+    - "Currency amounts vary by country; raw amounts need normalising."
+
+success_metric:
+  primary: "Precision at 500 reviews/day (the analyst team's capacity)."
+  secondary: "Value-weighted recall — recall on high-amount fraud matters more."
+  why: "The analyst budget is fixed; we care about ranking, and high-value misses hurt more."
+
+allowed_libraries: [pandas, scikit-learn, lightgbm, xgboost]
+default_deliverable: "A scoring service that ranks incoming transactions, a threshold recommendation for the 500-review-per-day budget, and a monitoring plan."
+
+interviewer_guide:
+  problem_framing:
+    expected_topics:
+      - "Cost-sensitive framing, not raw accuracy."
+      - "Precision at fixed review capacity; value-weighted recall."
+    common_mistakes:
+      - "Optimising AUC and ignoring the review-budget constraint."
+    follow_up_questions:
+      - "What's wrong with maximising ROC-AUC here?"
+    red_flags:
+      - "Metric without reference to analyst capacity."
+    model_answer_outline: |
+      Decision: which 500 transactions does an analyst review today? The
+      metric is precision at 500 (or lift at 500). High-amount misses are
+      more costly, so weight the loss by amount.
+
+  data_audit:
+    expected_topics:
+      - "chargeback_flag is post-hoc — must be dropped."
+      - "Class imbalance 0.15%."
+      - "Amount distributions by country differ."
+    common_mistakes:
+      - "Using chargeback_flag as a feature."
+    follow_up_questions:
+      - "Which columns are safe to use at inference time?"
+    red_flags:
+      - "Uses chargeback_flag."
+    model_answer_outline: |
+      Drop chargeback_flag. Normalise amount by country median. Audit
+      missingness. Confirm the temporal grain (transaction-level).
+
+  validation_strategy:
+    expected_topics:
+      - "Time-based split — hold out the most recent two weeks."
+      - "Stratified or grouped by card."
+    common_mistakes:
+      - "Random split → optimistic results from fraud drift."
+    follow_up_questions:
+      - "Why is a temporal split mandatory here?"
+    red_flags:
+      - "Random CV only."
+    model_answer_outline: |
+      Time-based holdout of the last 2–3 weeks. Stratified by card if the
+      same card appears across the split. Report the metric on the most
+      recent week to catch drift.
+
+  feature_engineering:
+    expected_topics:
+      - "Amount normalised by country/currency."
+      - "Velocity features (transactions per card in the last hour/day)."
+      - "Merchant-category as categorical; watch cardinality."
+    common_mistakes:
+      - "Raw amount as a feature without normalisation."
+    follow_up_questions:
+      - "What velocity features would you build?"
+    red_flags:
+      - "No normalisation across countries."
+    model_answer_outline: |
+      Amount / country-median, velocity (1h, 24h), hour-of-day bucketed,
+      merchant category one-hot or target-encoded with proper folds.
+
+  baseline_model_selection:
+    expected_topics:
+      - "Baseline: current rules (fixed threshold)."
+      - "Model: LightGBM with `is_unbalance` or scale_pos_weight; XGBoost alternative."
+    common_mistakes:
+      - "Skipping the existing-rules baseline."
+    follow_up_questions:
+      - "How much lift over the current rules would justify the model?"
+    red_flags:
+      - "No baseline."
+    model_answer_outline: |
+      Baseline = current rules. Model = LightGBM with class weighting.
+      Compare on precision at 500 reviews/day and value-weighted recall.
+
+  training_evaluation:
+    expected_topics:
+      - "PR-AUC and precision@500."
+      - "Overfitting checks via time-based validation."
+    common_mistakes:
+      - "ROC-AUC as the headline metric."
+    follow_up_questions:
+      - "Why is PR-AUC more informative than ROC-AUC here?"
+    red_flags:
+      - "No precision@500 evaluation."
+    model_answer_outline: |
+      Plot PR curves. Report precision@500, recall, and value-weighted
+      recall. Check overfitting by comparing train vs. holdout at weekly
+      granularity.
+
+  code_quality_reproducibility:
+    expected_topics:
+      - "Seeded splits, pipeline includes the normalisation."
+      - "Deterministic feature engineering for velocity features."
+    common_mistakes:
+      - "Random seeds only — but the split is still random."
+    follow_up_questions:
+      - "How would you make velocity features reproducible in a batch vs. streaming context?"
+    red_flags:
+      - "Non-deterministic split."
+    model_answer_outline: |
+      Seed everything. Package preprocessing + model in a sklearn
+      Pipeline. Save the split index list.
+
+  communication_reporting:
+    expected_topics:
+      - "Business value in expected dollars saved per week."
+      - "Alert-fatigue discussion with the ops team."
+    common_mistakes:
+      - "Presenting PR-AUC without translation."
+    follow_up_questions:
+      - "How would you present this to the Head of Fraud Ops?"
+    red_flags:
+      - "No dollar translation."
+    model_answer_outline: |
+      'At 500 reviews/day we catch ~X% of fraud, saving ~$Y/week net of
+      analyst cost. We recommend a 4-week shadow-mode run before switching
+      the production rules.'
+
+  limitations_next_steps:
+    expected_topics:
+      - "Fraud drift requires retraining every 1–4 weeks."
+      - "Shadow mode before production."
+      - "Compliance review of model-driven decisions."
+    common_mistakes:
+      - "Generic 'retrain periodically'."
+    follow_up_questions:
+      - "What monitoring would you set up?"
+    red_flags:
+      - "No drift monitoring."
+    model_answer_outline: |
+      Monitor precision@500 week over week. Retrain every 2 weeks.
+      Shadow-mode for 4 weeks. Compliance sign-off on the threshold.
